@@ -1,30 +1,64 @@
-var uuid
+// global
+//const session = {
+//	userUUID: "", // base64 encoded
+//	roomUUID: "", // base64 encoded
+//}
 
 // fetch user session
-async function getUserSession() {
+async function getUserID() {
 	if (window.sessionStorage.getItem("userID") == null) {
-		uuid = await fetch("/new-user").then(res => { return res.text() })
+		const uuid = await fetch("/new-user").then(res => { return res.text() })
 		window.sessionStorage.setItem("userID", uuid)
-	} else {
-		uuid = window.sessionStorage.getItem("userID")
 	}
-	//const current_room = document.querySelector("#current_room").innerHTML
 }
 
+// @TODO: check null
 async function getCurrentRoom() {
-	const apiPath = "/join/" + uuid
-	htmx.ajax("GET", apiPath, "#current_room")
+	const roomID = window.sessionStorage.getItem("roomID")
+	if (roomID != null) {
+		const apiPath = "/join/" + roomID
+		await htmx.ajax("GET", apiPath, { target: "#current_room", values: { join_userid: hxGetUserID() } })
+		swapInviteLink(roomID)
+	}
 }
 
 // init
 addEventListener("DOMContentLoaded", async () => {
-	await getUserSession()
-	getCurrentRoom()
+	await onDOMContentLoaded()
 })
 
-// TEST
-//(async () => {
-//	const uuid = await fetch("/new-user").then(res => { return res.text() })
-//	console.log(uuid)
-//	window.sessionStorage.setItem("userID", uuid)
-//})()
+async function onDOMContentLoaded() {
+	await getUserID()
+	await getCurrentRoom()
+}
+
+/*
+ * HTMX direct call
+ */
+
+function hxGetUserID() {
+	return window.sessionStorage.getItem("userID")
+}
+
+/*
+ * helper function
+ */
+
+function generateInviteLink(code) {
+	const origin = document.location.href
+	const proto = origin.split('://').shift()
+	const domain = origin.split('://').pop().split("/").shift()
+	const endpoint = "/join/" + code
+
+	return proto + "://" + domain + endpoint
+}
+
+// @TODO: check null
+function swapInviteLink() {
+	const inner = document.querySelector("#current_room_id").innerHTML
+	const head = inner.split(":").shift()
+	const code = inner.split(": ").pop()
+	document.querySelector("#current_room_id").innerHTML = head + ": " + generateInviteLink(code)
+
+	window.sessionStorage.setItem("roomID", code)
+}

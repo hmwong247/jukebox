@@ -21,23 +21,24 @@
     </fieldset>
     <br>
 
-    <form hx-post="./join" hx-target="#current_room">
-        <fieldset>
-            <legend>Join room</legend>
-            <div>
-                <label for="join_username">user name: </label>
-                <input name="join_username" id="join_username" placeholder="(optional)" /><br>
-            </div><br>
-            <div>
-                <label for="join_room_id">room id: </label>
-                <input name="join_room_id" placeholder="Room id..." /><br>
-            </div>
-        </fieldset>
-        <button type="submit">join</button>
-    </form>
-    <br>
-
-    <form hx-post="./create-room" hx-target="#current_room">
+    <!--<form hx-post="./join" hx-target="#current_room">-->
+    <!--    <fieldset>-->
+    <!--        <legend>Join room</legend>-->
+    <!--        <div>-->
+    <!--            <label for="join_username">user name: </label>-->
+    <!--            <input name="join_username" id="join_username" placeholder="(optional)" /><br>-->
+    <!--        </div><br>-->
+    <!--        <div>-->
+    <!--            <label for="join_room_id">room id: </label>-->
+    <!--            <input name="join_room_id" placeholder="Room id..." /><br>-->
+    <!--        </div>-->
+    <!--    </fieldset>-->
+    <!--    <button type="submit">join</button>-->
+    <!--</form>-->
+    <!--<br>-->
+    <!---->
+    <form hx-post="./create-room" hx-target="#current_room" hx-vals="js:{user_id: hxGetUserID()}"
+        hx-on::after-request="swapInviteLink()">
         <fieldset>
             <legend>Config new room</legend>
             <div>
