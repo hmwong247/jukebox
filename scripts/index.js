@@ -12,13 +12,11 @@ async function getUserID() {
 	}
 }
 
-// @TODO: check null
 async function getCurrentRoom() {
 	const roomID = window.sessionStorage.getItem("roomID")
-	if (roomID != null) {
+	if (roomID != undefined && roomID != null) {
 		const apiPath = "/join/" + roomID
 		await htmx.ajax("GET", apiPath, { target: "#current_room", values: { join_userid: hxGetUserID() } })
-		swapInviteLink(roomID)
 	}
 }
 
@@ -28,6 +26,7 @@ addEventListener("DOMContentLoaded", async () => {
 })
 
 async function onDOMContentLoaded() {
+	//htmx.logAll()
 	await getUserID()
 	await getCurrentRoom()
 }
@@ -53,12 +52,12 @@ function generateInviteLink(code) {
 	return proto + "://" + domain + endpoint
 }
 
-// @TODO: check null
 function swapInviteLink() {
 	const inner = document.querySelector("#current_room_id").innerHTML
 	const head = inner.split(":").shift()
 	const code = inner.split(": ").pop()
-	document.querySelector("#current_room_id").innerHTML = head + ": " + generateInviteLink(code)
-
-	window.sessionStorage.setItem("roomID", code)
+	if (code != "n/a") {
+		document.querySelector("#current_room_id").innerHTML = head + ": " + generateInviteLink(code)
+		window.sessionStorage.setItem("roomID", code)
+	}
 }

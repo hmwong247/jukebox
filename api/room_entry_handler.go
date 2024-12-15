@@ -8,7 +8,6 @@ import (
 	"main/types"
 	"math/rand/v2"
 	"net/http"
-	"slices"
 	"strings"
 	"text/template"
 
@@ -24,8 +23,17 @@ func HandleRoot(w http.ResponseWriter, r *http.Request) {
 // route: "GET /home"
 func HandleDefault(w http.ResponseWriter, r *http.Request) {
 	publicRooms := FilterPublicRooms(musicRooms)
-	tmpl := template.Must(template.ParseFiles("index.html", "templates/PublicRoomsDisplay.html"))
-	tmpl.Execute(w, publicRooms)
+	session := types.CurrentRoom{
+		Username: "n/a",
+		RoomID:   "n/a",
+	}
+	tmplData := types.TmplDataHome{
+		CurrentRoom: session,
+		PublicRooms: publicRooms,
+	}
+
+	tmpl := template.Must(template.ParseFiles("index.html", "templates/PublicRoomsDisplay.html", "templates/CurrentRoom.html"))
+	tmpl.Execute(w, tmplData)
 }
 
 // route: "GET /new-user"
@@ -34,19 +42,9 @@ func HandleNewUser(w http.ResponseWriter, r *http.Request) {
 	userIDByte := userID[:]
 	encodedBase64 := base64.RawURLEncoding.EncodeToString(userIDByte)
 	log.Printf("GET /new-user, uuid: %#v, rawURL: %#v\n", userID.String(), encodedBase64)
-	// decodedByte, err := base64.RawURLEncoding.DecodeString(encodedBase64)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// decodedUserID, err := uuid.FromBytes(decodedByte)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// log.Printf("decoded userID: %#v\n", decodedUserID.String())
 	w.Write([]byte(encodedBase64))
 }
 
-// @TODO: res list of user
 // route: "GET /join"
 func HandleJoin(w http.ResponseWriter, r *http.Request) {
 	joinRoomID := r.PathValue("id")
@@ -78,35 +76,43 @@ func HandleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	room, roomExists := musicRooms[roomUUID]
-	var joinedSession types.UserSession
+	var currentRoom types.CurrentRoom
 	if roomExists {
 		user := types.User{
 			UserID:   userUUID,
 			UserName: joinUsername,
 		}
-		// @TODO: implement cmp for types.User, compare uuid only
-		userExists := slices.Index(room.UserList, user)
+		userExists := user.Index(room.UserList)
 		if userExists == -1 {
-			// debug
-			fmt.Printf("capacity: %#v\n", room.UserList)
 			room.UserList = append(room.UserList, user)
-			fmt.Printf("capacity: %#v\n", room.UserList)
 		}
 
-		joinedSession = types.UserSession{
-			Username: joinUserID, // @TODO: implement user name
+		currentRoom = types.CurrentRoom{
 			RoomID:   joinRoomID, // no change, if exists
+			UserID:   joinUserID,
+			Username: joinUserID,
+			Host:     room.Host,
+			Capacity: len(room.UserList),
+			UserList: room.UserList,
 		}
 	} else {
-		joinedSession = types.UserSession{
-			Username: joinUserID,
+		currentRoom = types.CurrentRoom{
 			RoomID:   "n/a",
+			UserID:   joinUserID,
+			Username: joinUserID,
+			Host:     "n/a",
+			Capacity: 0,
 		}
 	}
 	publicRooms = FilterPublicRooms(musicRooms)
 
 	tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
-	tmpl.ExecuteTemplate(w, "current_room", joinedSession)
+	tmpl.ExecuteTemplate(w, "current_room", currentRoom)
+}
+
+// route: "GET /current-room/{id}"
+func HandleGetCurrentRoom(w http.ResponseWriter, r *http.Request) {
+
 }
 
 // route: "POST /create-room"
@@ -152,10 +158,13 @@ func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 
 	tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
 	encodedBase64URL := base64.RawURLEncoding.EncodeToString(newRoom.RoomID[:])
-	session := types.UserSession{
-		Username: newRoom.Host,
-		UserID:   newRoom.Host, // @TODO: maybe check UserID
+	session := types.CurrentRoom{
 		RoomID:   encodedBase64URL,
+		UserID:   postUserID, // valided from the beginning
+		Username: newRoom.Host,
+		Host:     newRoom.Host,
+		Capacity: len(newRoom.UserList),
+		UserList: newRoom.UserList,
 	}
 	tmpl.ExecuteTemplate(w, "current_room", session)
 
@@ -218,22 +227,6 @@ func Debug_data() {
 		}
 	}
 	publicRooms = FilterPublicRooms(musicRooms)
-
-	// debug: check for dupilcated pin
-	pinMap := make(map[string]int)
-	for _, item := range musicRooms {
-		_, exists := pinMap[item.Pin]
-		if exists {
-			pinMap[item.Pin] += 1
-		} else {
-			pinMap[item.Pin] = 1
-		}
-	}
-	log.Println("check pin collide")
-	for key, val := range pinMap {
-		fmt.Printf("key: %#v, item: %#v\n", key, val)
-	}
-
 }
 
 func FilterPublicRooms(rooms map[uuid.UUID]*types.RoomInfo) []types.PublicRoom {
