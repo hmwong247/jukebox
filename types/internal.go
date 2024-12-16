@@ -20,6 +20,5 @@ type RoomInfo struct {
 	RoomID   uuid.UUID
 	IsPublic bool
 	Host     string
-	Pin      string
 	UserList []User
 }

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"main/types"
-	"math/rand/v2"
 	"net/http"
 	"strings"
 	"text/template"
@@ -22,18 +21,21 @@ func HandleRoot(w http.ResponseWriter, r *http.Request) {
 
 // route: "GET /home"
 func HandleDefault(w http.ResponseWriter, r *http.Request) {
-	publicRooms := FilterPublicRooms(musicRooms)
-	session := types.CurrentRoom{
-		Username: "n/a",
-		RoomID:   "n/a",
-	}
-	tmplData := types.TmplDataHome{
-		CurrentRoom: session,
-		PublicRooms: publicRooms,
-	}
+	// publicRooms := FilterPublicRooms(musicRooms)
+	// session := types.CurrentRoom{
+	// 	Username: "n/a",
+	// 	RoomID:   "n/a",
+	// }
+	// tmplData := types.TmplDataHome{
+	// 	CurrentRoom: session,
+	// 	PublicRooms: publicRooms,
+	// }
+	//
+	// tmpl := template.Must(template.ParseFiles("index.html", "templates/PublicRoomsDisplay.html", "templates/CurrentRoom.html"))
+	// tmpl.Execute(w, tmplData)
 
-	tmpl := template.Must(template.ParseFiles("index.html", "templates/PublicRoomsDisplay.html", "templates/CurrentRoom.html"))
-	tmpl.Execute(w, tmplData)
+	tmpl := template.Must(template.ParseFiles("index.html", "templates/forms/user_profile.html"))
+	tmpl.Execute(w, nil)
 }
 
 // route: "GET /new-user"
@@ -115,11 +117,9 @@ func HandleGetCurrentRoom(w http.ResponseWriter, r *http.Request) {
 
 }
 
-// route: "POST /create-room"
+// route: "POST /create"
 func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	cfgUsername := r.PostFormValue("cfg_username")
-	cfgPrivate := r.PostFormValue("cfg_private")
-	cfgPin := r.PostFormValue("cfg_pin")
 	postUserID := r.PostFormValue("user_id")
 	// never trust the client
 	decodedBase64, err := base64.RawURLEncoding.DecodeString(postUserID)
@@ -128,24 +128,17 @@ func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Invalid user UUID from client: %v\n", err)
 		return
 	}
-
 	var host string = strings.TrimSpace(cfgUsername)
 	if host == "" {
 		host = "user"
 	}
 	var isPublic bool = true
-	if cfgPrivate == "on" {
-		isPublic = false
-	}
-	var customPin string = ""
-	if strings.Trim(cfgPin, " ") != "" {
-		customPin = strings.TrimSpace(cfgPin)
-	}
 	hostUser := types.User{
 		UserID:   postUserUUID,
 		UserName: host,
 	}
-	newRoom := CreateMusicRoom(hostUser, isPublic, customPin)
+
+	newRoom := CreateMusicRoom(hostUser, isPublic)
 	_, exists := musicRooms[newRoom.RoomID]
 	if exists {
 		http.Error(w, "UUID collided", http.StatusInternalServerError)
@@ -153,10 +146,10 @@ func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	} else {
 		musicRooms[newRoom.RoomID] = &newRoom
-		publicRooms = FilterPublicRooms(musicRooms)
+		// publicRooms = FilterPublicRooms(musicRooms)
 	}
 
-	tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
+	// tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
 	encodedBase64URL := base64.RawURLEncoding.EncodeToString(newRoom.RoomID[:])
 	session := types.CurrentRoom{
 		RoomID:   encodedBase64URL,
@@ -166,18 +159,49 @@ func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 		Capacity: len(newRoom.UserList),
 		UserList: newRoom.UserList,
 	}
-	tmpl.ExecuteTemplate(w, "current_room", session)
+	// tmpl.ExecuteTemplate(w, "current_room", session)
+	w.Write([]byte(session.RoomID))
 
-	// @TODO: maybe put PublicRoom in a map?
-	if newRoom.IsPublic {
-		pubRoom, err := findPublicRoom(newRoom.RoomID, publicRooms)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		tmpl = template.Must(template.ParseFiles("templates/PublicRoomsDisplay.html"))
-		tmpl.ExecuteTemplate(w, "oob-public_rooms_display", pubRoom)
+	// // @TODO: maybe put PublicRoom in a map?
+	// if newRoom.IsPublic {
+	// 	pubRoom, err := findPublicRoom(newRoom.RoomID, publicRooms)
+	// 	if err != nil {
+	// 		log.Println(err)
+	// 		return
+	// 	}
+	// 	tmpl = template.Must(template.ParseFiles("templates/PublicRoomsDisplay.html"))
+	// 	tmpl.ExecuteTemplate(w, "oob-public_rooms_display", pubRoom)
+	// }
+}
+
+// route: GET /lobby
+func EnterLobby(w http.ResponseWriter, r *http.Request) {
+	queryParam := r.URL.Query()
+	qRoomID := strings.TrimSpace(queryParam.Get("rid"))
+	decodebase64, err := base64.RawURLEncoding.DecodeString(qRoomID)
+	roomID, err := uuid.FromBytes(decodebase64)
+	if err != nil {
+		log.Printf("Trying to enter lobby with invalid room UUID")
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
 	}
+
+	// check roomID exists, check user exists in room
+	room, roomExists := musicRooms[roomID]
+	if !roomExists {
+		log.Printf("Trying to enter lobby with invalid room UUID")
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
+	// encodedBase64URL := base64.RawURLEncoding.EncodeToString(newRoom.RoomID[:])
+	session := types.CurrentRoom{
+		RoomID:   qRoomID,
+		Host:     room.Host,
+		Capacity: len(room.UserList),
+		UserList: room.UserList,
+	}
+	tmpl.ExecuteTemplate(w, "current_room", session)
 }
 
 /*
@@ -186,29 +210,31 @@ func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 */
 
 var (
+	// template cache
+	// tmplHome template.Template
+
 	musicRooms = make(map[uuid.UUID]*types.RoomInfo)
 
 	publicRooms = make([]types.PublicRoom, 0)
 )
 
-func CreateMusicRoom(hostUser types.User, isPublic bool, customPin string) types.RoomInfo {
+func CreateMusicRoom(hostUser types.User, isPublic bool) types.RoomInfo {
 	uuid := uuid.New()
-	if !isPublic && customPin == "" {
-		const pinLen = 6
-		pinPool := "0123456789"
-		pinByte := make([]byte, pinLen)
-		pinByte[0] = pinPool[rand.IntN(len(pinPool)-1)+1]
-		for i := 1; i < pinLen; i++ {
-			pinByte[i] = pinPool[rand.IntN(len(pinPool))]
-		}
-		customPin = string(pinByte)
-	}
+	// if !isPublic && customPin == "" {
+	// 	const pinLen = 6
+	// 	pinPool := "0123456789"
+	// 	pinByte := make([]byte, pinLen)
+	// 	pinByte[0] = pinPool[rand.IntN(len(pinPool)-1)+1]
+	// 	for i := 1; i < pinLen; i++ {
+	// 		pinByte[i] = pinPool[rand.IntN(len(pinPool))]
+	// 	}
+	// 	customPin = string(pinByte)
+	// }
 
 	ret := types.RoomInfo{
 		RoomID:   uuid,
 		IsPublic: isPublic,
 		Host:     hostUser.UserName,
-		Pin:      customPin,
 		UserList: []types.User{hostUser},
 	}
 	return ret
@@ -218,7 +244,7 @@ func Debug_data() {
 	// debug
 	hostUser := types.User{UserName: "A"}
 	for i := 0; i < 5; i++ {
-		newRoom := CreateMusicRoom(hostUser, true, "")
+		newRoom := CreateMusicRoom(hostUser, true)
 		_, exists := musicRooms[newRoom.RoomID]
 		if exists {
 			log.Printf("uuid collided: %#v\n", newRoom.RoomID)
@@ -234,15 +260,15 @@ func FilterPublicRooms(rooms map[uuid.UUID]*types.RoomInfo) []types.PublicRoom {
 	for _, roomInfo := range rooms {
 		if roomInfo.IsPublic {
 			base64RoomID := base64.URLEncoding.EncodeToString(roomInfo.RoomID[:])
-			requirePin := true
-			if roomInfo.Pin == "" {
-				requirePin = false
-			}
+			IsPublic := true
+			// if roomInfo.Pin == "" {
+			// 	requirePin = false
+			// }
 			publicRoom := types.PublicRoom{
-				RoomID:     base64RoomID,
-				Host:       roomInfo.Host,
-				Capacity:   len(roomInfo.UserList),
-				RequirePin: requirePin,
+				RoomID:   base64RoomID,
+				Host:     roomInfo.Host,
+				Capacity: len(roomInfo.UserList),
+				IsPublic: IsPublic,
 			}
 			ret = append(ret, publicRoom)
 		}

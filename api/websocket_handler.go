@@ -9,8 +9,9 @@ import (
 
 var upgrader = websocket.Upgrader{}
 
-// route: /wsroom
-func HandleWSRoom(w http.ResponseWriter, r *http.Request) {
+// @TODO: sperate websocket hub
+// route: /ws
+func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("WS upgrader: ", err)

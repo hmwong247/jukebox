@@ -22,12 +22,13 @@ func main() {
 	// handle room operations
 	mux.HandleFunc("/", api.HandleRoot)
 	mux.HandleFunc("GET /home", api.HandleDefault)
-	mux.HandleFunc("GET /new-user", api.HandleNewUser)
-	mux.HandleFunc("GET /join/{id}", api.HandleJoin)
-	mux.HandleFunc("POST /create-room", api.HandleCreateRoom)
+	mux.HandleFunc("GET /api/new-user", api.HandleNewUser)
+	mux.HandleFunc("GET /api/join/{id}", api.HandleJoin)
+	mux.HandleFunc("POST /api/create", api.HandleCreateRoom)
+	mux.HandleFunc("GET /lobby", api.EnterLobby)
 
 	// WebSocket
-	mux.HandleFunc("/wsroom", api.HandleWSRoom)
+	mux.HandleFunc("/ws", api.HandleWebSocket)
 
 	log.Fatal(http.ListenAndServe(":8080", mux))
 }

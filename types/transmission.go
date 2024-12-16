@@ -3,10 +3,10 @@ package types
 // NOTE: all id are base64 encoded for tranmission
 
 type PublicRoom struct {
-	RoomID     string
-	Host       string
-	Capacity   int
-	RequirePin bool
+	RoomID   string
+	Host     string
+	Capacity int
+	IsPublic bool
 }
 
 // type UserSession struct {
