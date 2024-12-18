@@ -1,30 +1,17 @@
 // global
-//const session = {
-//	userUUID: "", // base64 encoded
-//	roomUUID: "", // base64 encoded
-//}
+const session = {
+	sessionID: "",
+	roomID: "",
+}
 
 const API_PATH = {
 	NEW_USER: "/api/new-user",
+	CREATE: "/api/create",
+	SESSION: "/api/session",
 	JOIN: "/api/join",
+	WEBSOCKET: "/ws",
 	LOBBY: "/lobby",
 }
-
-// fetch user session
-async function fetchUserID() {
-	if (window.localStorage.getItem("userID") == null) {
-		const uuid = await fetch(API_PATH.NEW_USER).then(res => { return res.text() })
-		window.localStorage.setItem("userID", uuid)
-	}
-}
-
-//async function getCurrentRoom() {
-//	const roomID = window.localStorage.getItem("roomID")
-//	if (roomID != undefined && roomID != null) {
-//		const path = API_PATH.JOIN + "/" + roomID
-//		await htmx.ajax("GET", path, { target: "#current_room", values: { join_userid: hxGetUserID() } })
-//	}
-//}
 
 /**
  * init
@@ -36,8 +23,6 @@ addEventListener("DOMContentLoaded", async () => {
 // this is detached for later use after bootstrap
 async function onDOMContentLoaded() {
 	//htmx.logAll()
-
-	await fetchUserID()
 }
 
 /**
@@ -48,40 +33,67 @@ function hxGetUserID() {
 	return window.localStorage.getItem("userID")
 }
 
-function hxUpgradeWS() {
-	connectWS("ws://homearch:8080/ws")
-}
-
 /**
- * helper function
+ * API calls
  */
 
+async function fetchUserID() {
+	if (window.localStorage.getItem("userID") == null) {
+		const uuid = await fetch(API_PATH.NEW_USER).then(res => { return res.text() })
+		window.localStorage.setItem("userID", uuid)
+	}
+}
+
 async function submitUserProfile(event, form) {
+	// submit user profile and fetch room ID
 	event.preventDefault()
+
+	// fetch user ID
+	if (window.localStorage.getItem("userID") == null) {
+		const uid = await fetch(API_PATH.NEW_USER).then(res => { return res.text() }).catch(err => { console.error(err) })
+		window.localStorage.setItem("userID", uid)
+	}
+
+	// fetch room ID
+	const rid = await fetch(API_PATH.CREATE).then(res => { return res.text() }).catch(err => { console.error(err) })
+	session.roomID = rid
+
+	// fetch session ID
 	formData = new FormData(form)
 	formData.append("user_id", window.localStorage.getItem("userID"))
+	formData.append("room_id", session.roomID)
 
-	const roomID = await fetch(form.action, {
-		method: form.method,
+	const sid = await fetch(API_PATH.SESSION, {
+		method: "POST",
 		body: formData
 	}).then((res) => {
 		return res.text()
 	})
+	console.log(sid)
+	session.sessionID = sid
 
-	console.log(roomID)
-
-	await connectWS("ws://homearch:8080/ws").then(() => {
+	// connect to the websocket
+	const origin = document.location.href
+	const domain = origin.split('://').pop().split("/").shift()
+	const wsPath = "ws://" + domain + API_PATH.WEBSOCKET + "?sid=" + session.sessionID
+	await connectWS(wsPath).then(() => {
 		console.log("ws connected")
 	}).catch(() => {
 		console.log("ws err")
 	})
 
-	const path = API_PATH.LOBBY + "?rid=" + roomID
-	await htmx.ajax("GET", path, { target: "#div_swap", })
-	history.pushState({}, "", API_PATH.LOBBY)
+	// render the lobby page
+	const lobbyPath = API_PATH.LOBBY + "?rid=" + session.roomID
+	await htmx.ajax("GET", lobbyPath, { target: "#div_swap", })
+	history.pushState({}, "", lobbyPath)
 
 	console.log("end")
 }
+
+
+/**
+ * UI/UX related functions
+ */
 
 function generateInviteLink(code) {
 	const origin = document.location.href

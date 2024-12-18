@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"log"
 	"main/types"
@@ -13,6 +12,32 @@ import (
 	// switch to ULID
 	"github.com/google/uuid"
 )
+
+var (
+	// template cache
+	// tmplHome template.Template
+
+	// a buffer map for websocket connect that maps session id to user profile
+	// @TODO should be cleaned periodically
+	entryMap = make(map[uuid.UUID]UserProfile)
+
+	musicRooms = make(map[uuid.UUID]*types.RoomInfo)
+)
+
+type UserProfile struct {
+	name string
+	uid  uuid.UUID
+	rid  uuid.UUID
+}
+
+func (userProfile *UserProfile) Index(s []UserProfile) int {
+	for i, other := range s {
+		if userProfile.uid == other.uid {
+			return i
+		}
+	}
+	return -1
+}
 
 // route: "GET /" forbidden
 func HandleRoot(w http.ResponseWriter, r *http.Request) {
@@ -38,7 +63,7 @@ func HandleDefault(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, nil)
 }
 
-// route: "GET /new-user"
+// route: "GET /api/new-user"
 func HandleNewUser(w http.ResponseWriter, r *http.Request) {
 	userID := uuid.New()
 	userIDByte := userID[:]
@@ -106,72 +131,55 @@ func HandleJoin(w http.ResponseWriter, r *http.Request) {
 			Capacity: 0,
 		}
 	}
-	publicRooms = FilterPublicRooms(musicRooms)
 
 	tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
 	tmpl.ExecuteTemplate(w, "current_room", currentRoom)
 }
 
-// route: "GET /current-room/{id}"
-func HandleGetCurrentRoom(w http.ResponseWriter, r *http.Request) {
+// route: "GET /api/create"
+func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
+	// @TODO check if user has a session id to filter out spam api call
 
+	rid := uuid.New()
+	encodedRID := base64.RawURLEncoding.EncodeToString(rid[:])
+	w.Write([]byte(encodedRID))
 }
 
-// route: "POST /create"
-func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
-	cfgUsername := r.PostFormValue("cfg_username")
-	postUserID := r.PostFormValue("user_id")
+// route: POST /api/session
+func HandleNewSession(w http.ResponseWriter, r *http.Request) {
+	// return a session id for websocket identificaion
+	pUsername := r.PostFormValue("cfg_username")
+	pUID := r.PostFormValue("user_id")
+	pRID := r.PostFormValue("room_id")
 	// never trust the client
-	decodedBase64, err := base64.RawURLEncoding.DecodeString(postUserID)
-	postUserUUID, err := uuid.FromBytes(decodedBase64)
+	decodedUID, err := base64.RawURLEncoding.DecodeString(pUID)
+	uid, err := uuid.FromBytes(decodedUID)
 	if err != nil {
 		log.Printf("Invalid user UUID from client: %v\n", err)
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	var host string = strings.TrimSpace(cfgUsername)
-	if host == "" {
-		host = "user"
-	}
-	var isPublic bool = true
-	hostUser := types.User{
-		UserID:   postUserUUID,
-		UserName: host,
-	}
-
-	newRoom := CreateMusicRoom(hostUser, isPublic)
-	_, exists := musicRooms[newRoom.RoomID]
-	if exists {
-		http.Error(w, "UUID collided", http.StatusInternalServerError)
-		log.Printf("uuid collided: %#v\n", newRoom.RoomID)
+	decodedRID, err := base64.RawURLEncoding.DecodeString(pRID)
+	rid, err := uuid.FromBytes(decodedRID)
+	if err != nil {
+		log.Printf("Invalid room UUID from client: %v\n", err)
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
-	} else {
-		musicRooms[newRoom.RoomID] = &newRoom
-		// publicRooms = FilterPublicRooms(musicRooms)
+	}
+	var name string = strings.TrimSpace(pUsername)
+	if name == "" {
+		name = "user"
 	}
 
-	// tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
-	encodedBase64URL := base64.RawURLEncoding.EncodeToString(newRoom.RoomID[:])
-	session := types.CurrentRoom{
-		RoomID:   encodedBase64URL,
-		UserID:   postUserID, // valided from the beginning
-		Username: newRoom.Host,
-		Host:     newRoom.Host,
-		Capacity: len(newRoom.UserList),
-		UserList: newRoom.UserList,
+	sid := uuid.New()
+	profile := UserProfile{
+		name: name,
+		uid:  uid,
+		rid:  rid,
 	}
-	// tmpl.ExecuteTemplate(w, "current_room", session)
-	w.Write([]byte(session.RoomID))
-
-	// // @TODO: maybe put PublicRoom in a map?
-	// if newRoom.IsPublic {
-	// 	pubRoom, err := findPublicRoom(newRoom.RoomID, publicRooms)
-	// 	if err != nil {
-	// 		log.Println(err)
-	// 		return
-	// 	}
-	// 	tmpl = template.Must(template.ParseFiles("templates/PublicRoomsDisplay.html"))
-	// 	tmpl.ExecuteTemplate(w, "oob-public_rooms_display", pubRoom)
-	// }
+	entryMap[sid] = profile
+	encodedBase64URL := base64.RawURLEncoding.EncodeToString(sid[:])
+	w.Write([]byte(encodedBase64URL))
 }
 
 // route: GET /lobby
@@ -187,8 +195,8 @@ func EnterLobby(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check roomID exists, check user exists in room
-	room, roomExists := musicRooms[roomID]
-	if !roomExists {
+	hub, ok := HubMap[roomID]
+	if !ok {
 		log.Printf("Trying to enter lobby with invalid room UUID")
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
@@ -196,97 +204,10 @@ func EnterLobby(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
 	// encodedBase64URL := base64.RawURLEncoding.EncodeToString(newRoom.RoomID[:])
 	session := types.CurrentRoom{
-		RoomID:   qRoomID,
-		Host:     room.Host,
-		Capacity: len(room.UserList),
-		UserList: room.UserList,
+		RoomID: qRoomID,
+		// Host:     room.Host,
+		Capacity: len(hub.Clients),
+		// UserList: room.UserList,
 	}
 	tmpl.ExecuteTemplate(w, "current_room", session)
-}
-
-/*
-	helper functions
-	@TODO: move these functions to core module
-*/
-
-var (
-	// template cache
-	// tmplHome template.Template
-
-	musicRooms = make(map[uuid.UUID]*types.RoomInfo)
-
-	publicRooms = make([]types.PublicRoom, 0)
-)
-
-func CreateMusicRoom(hostUser types.User, isPublic bool) types.RoomInfo {
-	uuid := uuid.New()
-	// if !isPublic && customPin == "" {
-	// 	const pinLen = 6
-	// 	pinPool := "0123456789"
-	// 	pinByte := make([]byte, pinLen)
-	// 	pinByte[0] = pinPool[rand.IntN(len(pinPool)-1)+1]
-	// 	for i := 1; i < pinLen; i++ {
-	// 		pinByte[i] = pinPool[rand.IntN(len(pinPool))]
-	// 	}
-	// 	customPin = string(pinByte)
-	// }
-
-	ret := types.RoomInfo{
-		RoomID:   uuid,
-		IsPublic: isPublic,
-		Host:     hostUser.UserName,
-		UserList: []types.User{hostUser},
-	}
-	return ret
-}
-
-func Debug_data() {
-	// debug
-	hostUser := types.User{UserName: "A"}
-	for i := 0; i < 5; i++ {
-		newRoom := CreateMusicRoom(hostUser, true)
-		_, exists := musicRooms[newRoom.RoomID]
-		if exists {
-			log.Printf("uuid collided: %#v\n", newRoom.RoomID)
-		} else {
-			musicRooms[newRoom.RoomID] = &newRoom
-		}
-	}
-	publicRooms = FilterPublicRooms(musicRooms)
-}
-
-func FilterPublicRooms(rooms map[uuid.UUID]*types.RoomInfo) []types.PublicRoom {
-	ret := make([]types.PublicRoom, 0)
-	for _, roomInfo := range rooms {
-		if roomInfo.IsPublic {
-			base64RoomID := base64.URLEncoding.EncodeToString(roomInfo.RoomID[:])
-			IsPublic := true
-			// if roomInfo.Pin == "" {
-			// 	requirePin = false
-			// }
-			publicRoom := types.PublicRoom{
-				RoomID:   base64RoomID,
-				Host:     roomInfo.Host,
-				Capacity: len(roomInfo.UserList),
-				IsPublic: IsPublic,
-			}
-			ret = append(ret, publicRoom)
-		}
-	}
-
-	// for _, room := range ret {
-	// 	fmt.Printf("publicRoom: %#v\n", room)
-	// }
-
-	return ret
-}
-
-func findPublicRoom(roomID uuid.UUID, rooms []types.PublicRoom) (types.PublicRoom, error) {
-	base64UUID := base64.URLEncoding.EncodeToString(roomID[:])
-	for _, room := range rooms {
-		if base64UUID == room.RoomID {
-			return room, nil
-		}
-	}
-	return types.PublicRoom{}, errors.New("public room not found")
 }

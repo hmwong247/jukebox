@@ -9,7 +9,6 @@ import (
 
 func main() {
 	log.Println("start")
-	api.Debug_data()
 
 	mux := http.NewServeMux()
 
@@ -22,10 +21,11 @@ func main() {
 	// handle room operations
 	mux.HandleFunc("/", api.HandleRoot)
 	mux.HandleFunc("GET /home", api.HandleDefault)
-	mux.HandleFunc("GET /api/new-user", api.HandleNewUser)
-	mux.HandleFunc("GET /api/join/{id}", api.HandleJoin)
-	mux.HandleFunc("POST /api/create", api.HandleCreateRoom)
 	mux.HandleFunc("GET /lobby", api.EnterLobby)
+	mux.HandleFunc("GET /api/new-user", api.HandleNewUser)
+	mux.HandleFunc("GET /api/create", api.HandleCreateRoom)
+	mux.HandleFunc("POST /api/session", api.HandleNewSession)
+	mux.HandleFunc("GET /api/join/{id}", api.HandleJoin)
 
 	// WebSocket
 	mux.HandleFunc("/ws", api.HandleWebSocket)
