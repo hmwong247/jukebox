@@ -44,8 +44,8 @@ async function fetchUserID() {
 	}
 }
 
-async function submitUserProfile(event, form) {
-	// submit user profile and fetch room ID
+async function requestNewRoom(event, form) {
+	// submit user profile and fetch session ID
 	event.preventDefault()
 
 	// fetch user ID
@@ -56,6 +56,54 @@ async function submitUserProfile(event, form) {
 
 	// fetch room ID
 	const rid = await fetch(API_PATH.CREATE).then(res => { return res.text() }).catch(err => { console.error(err) })
+	session.roomID = rid
+
+	// fetch session ID
+	formData = new FormData(form)
+	formData.append("user_id", window.localStorage.getItem("userID"))
+	formData.append("room_id", session.roomID)
+
+	const sid = await fetch(API_PATH.SESSION, {
+		method: "POST",
+		body: formData
+	}).then((res) => {
+		return res.text()
+	})
+	console.log(sid)
+	session.sessionID = sid
+
+	// connect to the websocket
+	const origin = document.location.href
+	const domain = origin.split('://').pop().split("/").shift()
+	const wsPath = "ws://" + domain + API_PATH.WEBSOCKET + "?sid=" + session.sessionID
+	await connectWS(wsPath).then(() => {
+		console.log("ws connected")
+	}).catch(() => {
+		console.log("ws err")
+	})
+
+	// render the lobby page
+	const lobbyPath = API_PATH.LOBBY + "?rid=" + session.roomID
+	await htmx.ajax("GET", lobbyPath, { target: "#div_swap", })
+	history.pushState({}, "", lobbyPath)
+
+	console.log("end")
+}
+
+async function requestJoinRoom(event, form) {
+	// submit user profile and fetch session ID
+	event.preventDefault()
+
+	// fetch user ID
+	if (window.localStorage.getItem("userID") == null) {
+		const uid = await fetch(API_PATH.NEW_USER).then(res => { return res.text() }).catch(err => { console.error(err) })
+		window.localStorage.setItem("userID", uid)
+	}
+
+	// get room ID
+	const queryString = window.location.search
+	const queryParam = new URLSearchParams(queryString)
+	const rid = queryParam.get("rid")
 	session.roomID = rid
 
 	// fetch session ID

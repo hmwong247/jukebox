@@ -22,7 +22,7 @@ const (
 )
 
 var (
-	upgrader = websocket.Upgrader{
+	Upgrader = websocket.Upgrader{
 		ReadBufferSize:  READSIZE,
 		WriteBufferSize: WRITESIZE,
 	}
@@ -47,6 +47,7 @@ func (c *Client) Read() {
 	defer func() {
 		c.Hub.Unregister <- c
 		c.Conn.Close()
+		log.Printf("client disconnected: %v\n", c.ID)
 	}()
 
 	c.Conn.SetReadLimit(READSIZE)
@@ -59,7 +60,7 @@ func (c *Client) Read() {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("ws err: %v\n", err)
 			}
-			break
+			return
 		}
 		// msg = bytes.TrimSpace(bytes.Replace(msg, "\n", " ", -1))
 		c.Hub.Broadcast <- msg

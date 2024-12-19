@@ -7,6 +7,10 @@ import (
 	"github.com/google/uuid"
 )
 
+var (
+	HubMap = make(map[uuid.UUID]*Hub)
+)
+
 type Hub struct {
 	ID        uuid.UUID
 	Clients   map[*Client]int // multiple host is allowed
@@ -31,17 +35,13 @@ func NewHub(id uuid.UUID) *Hub {
 	}
 }
 
-func (h *Hub) CloseHub() {
-	close(h.Register)
-	close(h.Unregister)
-	close(h.Broadcast)
-}
-
 func (h *Hub) Run() {
 	defer func() {
+		// close all channels
 		close(h.Register)
 		close(h.Unregister)
 		close(h.Broadcast)
+		delete(HubMap, h.ID)
 	}()
 	for {
 		select {
@@ -61,6 +61,7 @@ func (h *Hub) Run() {
 				// @TODO check host transfer
 			}
 		case msg := <-h.Broadcast:
+			// log.Printf("ws msg - client: %v, msg: %v\n", )
 			for client := range h.Clients {
 				select {
 				case client.Send <- msg:

@@ -1,22 +1,6 @@
-{{ define "form_create_user_profile" }}
-<div id=swap_action hx-on::before-swap="hxUpgradeWS()">
-    <form hx-post="./api/create" hx-vals="js:{user_id: hxGetUserID()}" hx-on::before-swap="hxUpgradeWS()"
-        hx-target="#swap_action" hx-boost="true" hx-history="false" hx-push-url="./lobby">
-        <fieldset>
-            <legend>Your Profile</legend>
-            <div>
-                <label>User name: </label>
-                <input name="cfg_username" id="cfg_username" placeholder="(optional)" />
-            </div><br>
-            <button type="submit">Continue</button>
-        </fieldset>
-    </form>
-</div>
-{{ end }}
-
-{{ define "form_create_user_profile2" }}
+{{ define "form_user_profile_create" }}
 <div id=swap_action>
-    <form onsubmit="submitUserProfile(event, this)">
+    <form onsubmit="requestNewRoom(event, this)">
         <fieldset>
             <legend>Your Profile</legend>
             <div>
@@ -29,17 +13,17 @@
 </div>
 {{ end }}
 
-{{ define "form_join_user_profile" }}
-<!--@TODO join with user name-->
-<form hx-post="./api/join" hx-vals="js:{user_id: hxGetUserID()}" hx-target="#div_swap" hx-boost="true"
-    hx-history="false" hx-push-url="./lobby">
-    <fieldset>
-        <legend>Your Profile</legend>
-        <div>
-            <label>User name: </label>
-            <input name="cfg_username" id="cfg_username" placeholder="(optional)" />
-        </div><br>
-        <button type="submit">Join</button>
-    </fieldset>
-</form>
+{{ define "form_user_profile_join" }}
+<div id=swap_action>
+    <form onsubmit="requestJoinRoom(event, this)">
+        <fieldset>
+            <legend>Your Profile</legend>
+            <div>
+                <label>User name: </label>
+                <input name="cfg_username" id="cfg_username" placeholder="(optional)" />
+            </div><br>
+            <button type="submit">Continue</button>
+        </fieldset>
+    </form>
+</div>
 {{ end }}
