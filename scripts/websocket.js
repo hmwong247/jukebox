@@ -21,6 +21,15 @@ function connectWS(endpoint) {
 		}
 		client.ws.onmessage = (event) => {
 			console.log("ws recv: " + event.data)
+			const msg = JSON.parse(event.data)
+			console.log(msg.MsgType)
+			switch (msg.MsgType) {
+				case 1: // broadcast
+					updateRoomStatus(msg)
+					break
+				default:
+					break
+			}
 		}
 	})
 }

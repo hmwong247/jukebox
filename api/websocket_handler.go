@@ -2,7 +2,7 @@ package api
 
 import (
 	"encoding/base64"
-	"log"
+	"log/slog"
 	"main/core/corewebsocket"
 	"net/http"
 	"strings"
@@ -14,23 +14,22 @@ import (
 func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	queryParam := r.URL.Query()
 	qSID := strings.TrimSpace(queryParam.Get("sid"))
-	log.Printf("ws connect sid: %v\n", qSID)
 	decodedSID, err := base64.RawURLEncoding.DecodeString(qSID)
 	sid, err := uuid.FromBytes(decodedSID)
 	if err != nil {
-		log.Printf("ws: Trying to enter hub with invalid session UUID")
+		slog.Info("ws: Trying to enter hub with invalid session UUID", "qSID", qSID)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	profile, ok := entryMap[sid]
 	if !ok {
-		log.Printf("ws: session does not exists")
-		http.Error(w, "", http.StatusInternalServerError)
+		slog.Error("ws: session does not exeists", "status", http.StatusForbidden)
+		http.Error(w, "", http.StatusForbidden)
 		return
 	}
 	hub, ok := corewebsocket.HubMap[profile.rid]
 	if !ok {
-		log.Printf("ws: hub does not exists")
+		slog.Error("ws: hub does not exeists", "status", http.StatusInternalServerError)
 		http.Error(w, "", http.StatusInternalServerError)
 		return
 	}
@@ -38,7 +37,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// switch to websocket
 	conn, err := corewebsocket.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println("WS upgrader: ", err)
+		slog.Error("ws upgrade err", "err", err)
 		return
 	}
 
@@ -52,7 +51,18 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		Send:       make(chan []byte, 1024),
 	}
 
+	// broadcast join notification
+	msg := corewebsocket.Message{
+		MsgType:  1,
+		UID:      client.ID.String(),
+		Username: client.Name,
+		Data:     "join",
+	}
+	client.Hub.Broadcast <- msg
 	client.Hub.Register <- client
 	go client.Read()
 	go client.Write()
+
+	// clean up the entryMap
+	delete(entryMap, sid)
 }

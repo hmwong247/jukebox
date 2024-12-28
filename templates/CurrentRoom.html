@@ -1,23 +1,23 @@
-{{ define "row_current_room_user_list" }}
+{{ define "row_room_user_list" }}
 <li>user name: {{ .UserName }}</li>
 {{ end }}
 
-{{ define "current_room_user_list" }}
-<ul id="current_room_user_list">
+{{ define "room_user_list" }}
+<ul id="room_user_list">
     {{ range $idx, $item := .UserList }}
     {{ with $item }}
-    {{ template "row_current_room_user_list" . }}
+    {{ template "room_user_list" . }}
     {{ end }}
     {{ end }}
 </ul>
 {{ end }}
 
-{{ define "current_room" }}
+{{ define "room_status" }}
 <div>
-    <p id="current_username">Current username: {{ .Username }}</p>
-    <p id="current_room_id">Current roomd id: {{ .RoomID }}</p>
-    <p id="current_room_host">Host: {{ .Host }}</p>
-    <p id="current_room_capacity">Capacity: {{ .Capacity }}</p>
-    {{ template "current_room_user_list" . }}
+    <p id="username">user name: {{ .Username }}</p>
+    <p id="room_id">roomd id: {{ .RoomID }}</p>
+    <p id="room_host">host: {{ .Host }}</p>
+    <p id="room_capacity">capacity: {{ .Capacity }}</p>
+    {{ template "room_user_list" . }}
 </div>
 {{ end }}

@@ -2,7 +2,7 @@ package api
 
 import (
 	"encoding/base64"
-	"log"
+	"log/slog"
 	"main/core/corewebsocket"
 	"main/types"
 	"net/http"
@@ -16,8 +16,7 @@ var (
 	// template cache
 	// tmplHome template.Template
 
-	// a buffer map for websocket connect that maps session id to user profile
-	// @TODO should be cleaned periodically
+	// for websocket connect that maps session id to user profile
 	entryMap = make(map[uuid.UUID]UserProfile)
 
 	musicRooms = make(map[uuid.UUID]*types.RoomInfo)
@@ -45,7 +44,7 @@ func HandleRoot(w http.ResponseWriter, r *http.Request) {
 
 // route: "GET /home"
 func HandleDefault(w http.ResponseWriter, r *http.Request) {
-	tmpl := template.Must(template.ParseFiles("index.html", "templates/forms/user_profile.html"))
+	tmpl := template.Must(template.ParseFiles("statics/index.html", "templates/forms/user_profile.html"))
 	tmpl.Execute(w, nil)
 }
 
@@ -54,13 +53,13 @@ func HandleJoin(w http.ResponseWriter, r *http.Request) {
 	// joinRoomID := r.PathValue("rid")
 	queryParam := r.URL.Query()
 	qRID := strings.TrimSpace(queryParam.Get("rid"))
-	log.Println("GET /join, rid: ", qRID)
+	slog.Debug("GET /join", "rid", qRID)
 	if qRID == "" {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
-	tmpl := template.Must(template.ParseFiles("join.html", "templates/forms/user_profile.html"))
+	tmpl := template.Must(template.ParseFiles("statics/join.html", "templates/forms/user_profile.html"))
 	tmpl.Execute(w, nil)
 
 	// userUUIDBytes, err := base64.RawURLEncoding.DecodeString(joinUserID)
@@ -116,7 +115,7 @@ func EnterLobby(w http.ResponseWriter, r *http.Request) {
 	decodebase64, err := base64.RawURLEncoding.DecodeString(qRoomID)
 	roomID, err := uuid.FromBytes(decodebase64)
 	if err != nil {
-		log.Printf("Trying to enter lobby with invalid room UUID")
+		slog.Info("Trying to enter lobby with invalid room UUID", "status", http.StatusForbidden)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -124,8 +123,8 @@ func EnterLobby(w http.ResponseWriter, r *http.Request) {
 	// check roomID exists, check user exists in room
 	hub, ok := corewebsocket.HubMap[roomID]
 	if !ok {
-		log.Printf("Trying to enter lobby with invalid room UUID")
-		http.Error(w, "forbidden", http.StatusForbidden)
+		slog.Error("hub not found", "status", http.StatusInternalServerError, "rid", roomID.String())
+		http.Error(w, "forbidden", http.StatusInternalServerError)
 		return
 	}
 	tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
@@ -136,7 +135,7 @@ func EnterLobby(w http.ResponseWriter, r *http.Request) {
 		Capacity: len(hub.Clients),
 		// UserList: room.UserList,
 	}
-	tmpl.ExecuteTemplate(w, "current_room", session)
+	tmpl.ExecuteTemplate(w, "room_status", session)
 }
 
 // route: "GET /api/new-user"
@@ -144,14 +143,12 @@ func HandleNewUser(w http.ResponseWriter, r *http.Request) {
 	userID := uuid.New()
 	userIDByte := userID[:]
 	encodedBase64 := base64.RawURLEncoding.EncodeToString(userIDByte)
-	log.Printf("GET /new-user, uuid: %#v, rawURL: %#v\n", userID.String(), encodedBase64)
+	slog.Debug("GET /new-user", "base64", encodedBase64)
 	w.Write([]byte(encodedBase64))
 }
 
 // route: "GET /api/create"
 func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
-	// @TODO check if user has a session id to filter out spam api call
-
 	rid := uuid.New()
 	hub := corewebsocket.NewHub(rid)
 	corewebsocket.HubMap[rid] = hub
@@ -171,14 +168,14 @@ func HandleNewSession(w http.ResponseWriter, r *http.Request) {
 	decodedUID, err := base64.RawURLEncoding.DecodeString(pUID)
 	uid, err := uuid.FromBytes(decodedUID)
 	if err != nil {
-		log.Printf("Invalid user UUID from client: %v\n", err)
+		slog.Info("Invalid user UUID from client:", "status", http.StatusForbidden, "err", err)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	decodedRID, err := base64.RawURLEncoding.DecodeString(pRID)
 	rid, err := uuid.FromBytes(decodedRID)
 	if err != nil {
-		log.Printf("Invalid room UUID from client: %v\n", err)
+		slog.Info("Invalid room UUID from client:", "status", http.StatusForbidden, "err", err)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}

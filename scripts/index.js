@@ -69,7 +69,6 @@ async function requestNewRoom(event, form) {
 	}).then((res) => {
 		return res.text()
 	})
-	console.log(sid)
 	session.sessionID = sid
 
 	// connect to the websocket
@@ -78,16 +77,14 @@ async function requestNewRoom(event, form) {
 	const wsPath = "ws://" + domain + API_PATH.WEBSOCKET + "?sid=" + session.sessionID
 	await connectWS(wsPath).then(() => {
 		console.log("ws connected")
-	}).catch(() => {
-		console.log("ws err")
+	}).catch((err) => {
+		console.error("ws err:" + err)
 	})
 
 	// render the lobby page
 	const lobbyPath = API_PATH.LOBBY + "?rid=" + session.roomID
 	await htmx.ajax("GET", lobbyPath, { target: "#div_swap", })
-	history.pushState({}, "", lobbyPath)
-
-	console.log("end")
+	history.pushState({}, "", API_PATH.LOBBY)
 }
 
 async function requestJoinRoom(event, form) {
@@ -117,7 +114,6 @@ async function requestJoinRoom(event, form) {
 	}).then((res) => {
 		return res.text()
 	})
-	console.log(sid)
 	session.sessionID = sid
 
 	// connect to the websocket
@@ -126,16 +122,14 @@ async function requestJoinRoom(event, form) {
 	const wsPath = "ws://" + domain + API_PATH.WEBSOCKET + "?sid=" + session.sessionID
 	await connectWS(wsPath).then(() => {
 		console.log("ws connected")
-	}).catch(() => {
-		console.log("ws err")
+	}).catch((err) => {
+		console.error("ws err:" + err)
 	})
 
 	// render the lobby page
 	const lobbyPath = API_PATH.LOBBY + "?rid=" + session.roomID
 	await htmx.ajax("GET", lobbyPath, { target: "#div_swap", })
-	history.pushState({}, "", lobbyPath)
-
-	console.log("end")
+	history.pushState({}, "", API_PATH.LOBBY)
 }
 
 
@@ -159,5 +153,33 @@ function swapInviteLink() {
 	if (code != "n/a") {
 		document.querySelector("#current_room_id").innerHTML = head + ": " + generateInviteLink(code)
 		window.localStorage.setItem("roomID", code)
+	}
+}
+
+function updateRoomStatus(msg) {
+	const payload = msg.Data
+	switch (payload) {
+		case "join": {
+			const inner = document.querySelector("#room_capacity").innerHTML
+			const prefix = inner.split(": ").shift()
+			const capacity = parseInt(inner.split(": ").pop()) + 1
+			document.querySelector("#room_capacity").innerHTML = prefix + ": " + capacity
+			console.log(prefix + capacity)
+			// update the userlist
+			break
+		}
+		case "left": {
+			const inner = document.querySelector("#room_capacity").innerHTML
+			const prefix = inner.split(": ").shift()
+			const capacity = parseInt(inner.split(": ").pop()) - 1
+			document.querySelector("#room_capacity").innerHTML = prefix + ": " + capacity
+			console.log(prefix + capacity)
+			break
+		}
+		case "host": {
+			break
+		}
+		default:
+			break
 	}
 }

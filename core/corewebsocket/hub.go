@@ -2,7 +2,8 @@ package corewebsocket
 
 import (
 	"encoding/base64"
-	"log"
+	"encoding/json"
+	"log/slog"
 
 	"github.com/google/uuid"
 )
@@ -14,7 +15,7 @@ var (
 type Hub struct {
 	ID        uuid.UUID
 	Clients   map[*Client]int // multiple host is allowed
-	Broadcast chan []byte
+	Broadcast chan Message
 
 	// control channel
 	Register   chan *Client
@@ -29,7 +30,7 @@ func NewHub(id uuid.UUID) *Hub {
 	return &Hub{
 		ID:         id,
 		Clients:    clients,
-		Broadcast:  make(chan []byte),
+		Broadcast:  make(chan Message),
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
 	}
@@ -49,22 +50,40 @@ func (h *Hub) Run() {
 			h.Clients[client] = client.Permission
 		case client := <-h.Unregister:
 			if _, ok := h.Clients[client]; ok {
+				// broadcast leave notification
+				msg := Message{
+					MsgType: 1,
+					UID:     client.ID.String(),
+					Data:    "left",
+				}
+				// wrap by goroutine to avoid deadlock
+				go func() {
+					if len(h.Clients) < 1 {
+						return
+					}
+					h.Broadcast <- msg
+				}()
+
+				// clean up
 				delete(h.Clients, client)
 				close(client.Send)
 				// check if hub should be closed
 				if len(h.Clients) == 0 {
-					// h.CloseHub()
 					idStr := base64.RawURLEncoding.EncodeToString(h.ID[:])
-					log.Printf("hub closed: no client in hub [%v]\n", idStr)
+					slog.Debug("hub closed: no client in hub", "id", idStr)
 					return
 				}
 				// @TODO check host transfer
 			}
 		case msg := <-h.Broadcast:
-			// log.Printf("ws msg - client: %v, msg: %v\n", )
+			msgJson, err := json.Marshal(msg)
+			if err != nil {
+				slog.Error("json err", "err", err)
+			}
+			slog.Debug("ws msg", "cid", msg.UID, "msg", msg.Data)
 			for client := range h.Clients {
 				select {
-				case client.Send <- msg:
+				case client.Send <- []byte(msgJson):
 				default:
 					close(client.Send)
 					delete(h.Clients, client)

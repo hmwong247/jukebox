@@ -1,7 +1,7 @@
 package corewebsocket
 
 import (
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -43,11 +43,24 @@ type Client struct {
 	Send       chan []byte
 }
 
+/*
+type 0: debug
+type 1: broadcast
+type 3: send all
+type 5: media control
+*/
+type Message struct {
+	MsgType  int
+	UID      string
+	Username string
+	Data     string
+}
+
 func (c *Client) Read() {
 	defer func() {
 		c.Hub.Unregister <- c
 		c.Conn.Close()
-		log.Printf("client disconnected: %v\n", c.ID)
+		slog.Debug("client disconnected", "id", c.ID)
 	}()
 
 	c.Conn.SetReadLimit(READSIZE)
@@ -55,14 +68,21 @@ func (c *Client) Read() {
 	c.Conn.SetPongHandler(func(string) error { c.Conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 
 	for {
-		_, msg, err := c.Conn.ReadMessage()
+		_, msgRead, err := c.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("ws err: %v\n", err)
+				slog.Error("ws client error", "err", err)
 			}
 			return
 		}
 		// msg = bytes.TrimSpace(bytes.Replace(msg, "\n", " ", -1))
+
+		msg := Message{
+			MsgType:  1,
+			UID:      c.ID.String(),
+			Username: c.Name,
+			Data:     string(msgRead),
+		}
 		c.Hub.Broadcast <- msg
 	}
 }
@@ -86,19 +106,19 @@ func (c *Client) Write() {
 
 			w, err := c.Conn.NextWriter(websocket.TextMessage)
 			if err != nil {
-				log.Printf("ws write err: %v\n", err)
+				slog.Error("ws client write err", "err", err)
 				return
 			}
 			w.Write(msg)
 			if err := w.Close(); err != nil {
-				log.Printf("ws write err: %v\n", err)
+				slog.Error("ws client write err", "err", err)
 				return
 			}
 		case <-ticker.C:
 			// ping message
 			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				log.Printf("ws write err: %v\n", err)
+				slog.Error("ws client write err", "err", err)
 				return
 			}
 		}

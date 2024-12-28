@@ -1,14 +1,21 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 
 	"main/api"
 )
 
 func main() {
-	log.Println("start")
+	// slog
+	logOpt := &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}
+	slogger := slog.New(slog.NewTextHandler(os.Stdout, logOpt))
+	slog.SetDefault(slogger)
+	slog.Info("start")
 
 	mux := http.NewServeMux()
 
@@ -30,5 +37,5 @@ func main() {
 	// WebSocket
 	mux.HandleFunc("/ws", api.HandleWebSocket)
 
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	slog.Error("server crashed", "err", http.ListenAndServe(":8080", mux))
 }
