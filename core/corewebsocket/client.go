@@ -35,12 +35,13 @@ permission: allowed values are 1,3,7
 7 = host
 */
 type Client struct {
-	Conn       *websocket.Conn
-	Hub        *Hub
-	ID         uuid.UUID
-	Name       string
-	Permission int
-	Send       chan []byte
+	Conn          *websocket.Conn
+	Hub           *Hub
+	ID            uuid.UUID
+	Name          string
+	Permission    int
+	Send          chan []byte
+	JoinUnixMilli int64
 }
 
 /*

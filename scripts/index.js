@@ -2,6 +2,7 @@
 const session = {
 	sessionID: "",
 	roomID: "",
+	username: "user",
 }
 
 const API_PATH = {
@@ -47,6 +48,10 @@ async function fetchUserID() {
 async function requestNewRoom(event, form) {
 	// submit user profile and fetch session ID
 	event.preventDefault()
+	const cfgUsername = document.forms["user_profile"]["cfg_username"].value.trim()
+	if (cfgUsername != null && cfgUsername.length) {
+		session.username = cfgUsername
+	}
 
 	// fetch user ID
 	if (window.localStorage.getItem("userID") == null) {
@@ -85,11 +90,16 @@ async function requestNewRoom(event, form) {
 	const lobbyPath = API_PATH.LOBBY + "?rid=" + session.roomID
 	await htmx.ajax("GET", lobbyPath, { target: "#div_swap", })
 	history.pushState({}, "", API_PATH.LOBBY)
+	swapUsername()
 }
 
 async function requestJoinRoom(event, form) {
 	// submit user profile and fetch session ID
 	event.preventDefault()
+	const cfgUsername = document.forms["user_profile"]["cfg_username"].value.trim()
+	if (cfgUsername != null && cfgUsername.length) {
+		session.username = cfgUsername
+	}
 
 	// fetch user ID
 	if (window.localStorage.getItem("userID") == null) {
@@ -130,6 +140,7 @@ async function requestJoinRoom(event, form) {
 	const lobbyPath = API_PATH.LOBBY + "?rid=" + session.roomID
 	await htmx.ajax("GET", lobbyPath, { target: "#div_swap", })
 	history.pushState({}, "", API_PATH.LOBBY)
+	swapUsername()
 }
 
 
@@ -156,6 +167,13 @@ function swapInviteLink() {
 	}
 }
 
+function swapUsername() {
+	const inner = document.querySelector("#username").innerHTML
+	const prefix = inner.split(": ").shift()
+	const username = session.username
+	document.querySelector("#username").innerHTML = prefix + ": " + username
+}
+
 function updateRoomStatus(msg) {
 	const payload = msg.Data
 	switch (payload) {
@@ -177,6 +195,11 @@ function updateRoomStatus(msg) {
 			break
 		}
 		case "host": {
+			const inner = document.querySelector("#room_host").innerHTML
+			const prefix = inner.split(": ").shift()
+			const host = msg.Username
+			document.querySelector("#room_host").innerHTML = prefix + ": " + host
+			console.log(prefix + host)
 			break
 		}
 		default:

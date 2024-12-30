@@ -1,6 +1,6 @@
 {{ define "form_user_profile_create" }}
 <div id=swap_action>
-    <form onsubmit="requestNewRoom(event, this)">
+    <form name="user_profile" onsubmit="requestNewRoom(event, this)">
         <fieldset>
             <legend>Your Profile</legend>
             <div>
@@ -15,7 +15,7 @@
 
 {{ define "form_user_profile_join" }}
 <div id=swap_action>
-    <form onsubmit="requestJoinRoom(event, this)">
+    <form name="user_profile" onsubmit="requestJoinRoom(event, this)">
         <fieldset>
             <legend>Your Profile</legend>
             <div>

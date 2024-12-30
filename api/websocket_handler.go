@@ -6,6 +6,7 @@ import (
 	"main/core/corewebsocket"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -43,12 +44,13 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	// create client
 	client := &corewebsocket.Client{
-		Conn:       conn,
-		Hub:        hub,
-		ID:         profile.uid,
-		Name:       profile.name,
-		Permission: 7,
-		Send:       make(chan []byte, 1024),
+		Conn:          conn,
+		Hub:           hub,
+		ID:            profile.uid,
+		Name:          profile.name,
+		Permission:    7,
+		Send:          make(chan []byte, 1024),
+		JoinUnixMilli: time.Now().UnixMilli(),
 	}
 
 	// broadcast join notification

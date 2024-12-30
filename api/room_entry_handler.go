@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"log/slog"
 	"main/core/corewebsocket"
-	"main/types"
+	"main/core/views"
 	"net/http"
 	"strings"
 	"text/template"
@@ -18,8 +18,6 @@ var (
 
 	// for websocket connect that maps session id to user profile
 	entryMap = make(map[uuid.UUID]UserProfile)
-
-	musicRooms = make(map[uuid.UUID]*types.RoomInfo)
 )
 
 type UserProfile struct {
@@ -129,9 +127,9 @@ func EnterLobby(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
 	// encodedBase64URL := base64.RawURLEncoding.EncodeToString(newRoom.RoomID[:])
-	session := types.CurrentRoom{
-		RoomID: qRoomID,
-		// Host:     room.Host,
+	session := views.RoomStatus{
+		RoomID:   qRoomID,
+		Host:     hub.Host.Name,
 		Capacity: len(hub.Clients),
 		// UserList: room.UserList,
 	}
