@@ -3,6 +3,7 @@ const session = {
 	sessionID: "",
 	roomID: "",
 	username: "user",
+	userList: {},
 }
 
 const API_PATH = {
@@ -40,30 +41,31 @@ function hxGetUserID() {
 
 async function fetchUserID() {
 	if (window.localStorage.getItem("userID") == null) {
-		const uuid = await fetch(API_PATH.NEW_USER).then(res => { return res.text() })
-		window.localStorage.setItem("userID", uuid)
-	}
-}
-
-async function requestNewRoom(event, form) {
-	// submit user profile and fetch session ID
-	event.preventDefault()
-	const cfgUsername = document.forms["user_profile"]["cfg_username"].value.trim()
-	if (cfgUsername != null && cfgUsername.length) {
-		session.username = cfgUsername
-	}
-
-	// fetch user ID
-	if (window.localStorage.getItem("userID") == null) {
 		const uid = await fetch(API_PATH.NEW_USER).then(res => { return res.text() }).catch(err => { console.error(err) })
 		window.localStorage.setItem("userID", uid)
 	}
+}
 
-	// fetch room ID
-	const rid = await fetch(API_PATH.CREATE).then(res => { return res.text() }).catch(err => { console.error(err) })
+async function fetchRoomID() {
+	const path = API_PATH.CREATE + "?sid=" + session.sessionID
+	const rid = await fetch(path).then(res => { return res.text() }).catch(err => { console.error(err) })
 	session.roomID = rid
+}
 
-	// fetch session ID
+async function fetchSessionID(form) {
+	formData = new FormData(form)
+	formData.append("user_id", window.localStorage.getItem("userID"))
+
+	const sid = await fetch(API_PATH.SESSION, {
+		method: "POST",
+		body: formData
+	}).then((res) => {
+		return res.text()
+	})
+	session.sessionID = sid
+}
+
+async function fetchSessionIDJoin(form) {
 	formData = new FormData(form)
 	formData.append("user_id", window.localStorage.getItem("userID"))
 	formData.append("room_id", session.roomID)
@@ -75,8 +77,9 @@ async function requestNewRoom(event, form) {
 		return res.text()
 	})
 	session.sessionID = sid
+}
 
-	// connect to the websocket
+async function connectWebSocket() {
 	const origin = document.location.href
 	const domain = origin.split('://').pop().split("/").shift()
 	const wsPath = "ws://" + domain + API_PATH.WEBSOCKET + "?sid=" + session.sessionID
@@ -85,9 +88,30 @@ async function requestNewRoom(event, form) {
 	}).catch((err) => {
 		console.error("ws err:" + err)
 	})
+}
+
+async function requestNewRoom(event, form) {
+	// submit user profile and fetch session ID
+	event.preventDefault()
+	const cfgUsername = document.forms["user_profile"]["cfg_username"].value.trim()
+	if (cfgUsername != null && cfgUsername.length) {
+		session.username = cfgUsername
+	}
+
+	// fetch user ID
+	await fetchUserID()
+
+	// fetch session ID
+	await fetchSessionID(form)
+
+	// fetch room ID
+	await fetchRoomID()
+
+	// connect to the websocket
+	await connectWebSocket()
 
 	// render the lobby page
-	const lobbyPath = API_PATH.LOBBY + "?rid=" + session.roomID
+	const lobbyPath = API_PATH.LOBBY + "?sid=" + session.sessionID
 	await htmx.ajax("GET", lobbyPath, { target: "#div_swap", })
 	history.pushState({}, "", API_PATH.LOBBY)
 	swapUsername()
@@ -101,43 +125,23 @@ async function requestJoinRoom(event, form) {
 		session.username = cfgUsername
 	}
 
-	// fetch user ID
-	if (window.localStorage.getItem("userID") == null) {
-		const uid = await fetch(API_PATH.NEW_USER).then(res => { return res.text() }).catch(err => { console.error(err) })
-		window.localStorage.setItem("userID", uid)
-	}
-
 	// get room ID
-	const queryString = window.location.search
-	const queryParam = new URLSearchParams(queryString)
-	const rid = queryParam.get("rid")
-	session.roomID = rid
+	const queryString = window.location.search;
+	const urlParams = new URLSearchParams(queryString);
+	session.roomID = urlParams.get("rid")
+	console.log(session.roomID)
+
+	// fetch user ID
+	await fetchUserID()
 
 	// fetch session ID
-	formData = new FormData(form)
-	formData.append("user_id", window.localStorage.getItem("userID"))
-	formData.append("room_id", session.roomID)
-
-	const sid = await fetch(API_PATH.SESSION, {
-		method: "POST",
-		body: formData
-	}).then((res) => {
-		return res.text()
-	})
-	session.sessionID = sid
+	await fetchSessionIDJoin(form)
 
 	// connect to the websocket
-	const origin = document.location.href
-	const domain = origin.split('://').pop().split("/").shift()
-	const wsPath = "ws://" + domain + API_PATH.WEBSOCKET + "?sid=" + session.sessionID
-	await connectWS(wsPath).then(() => {
-		console.log("ws connected")
-	}).catch((err) => {
-		console.error("ws err:" + err)
-	})
+	await connectWebSocket()
 
 	// render the lobby page
-	const lobbyPath = API_PATH.LOBBY + "?rid=" + session.roomID
+	const lobbyPath = API_PATH.LOBBY + "?sid=" + session.sessionID
 	await htmx.ajax("GET", lobbyPath, { target: "#div_swap", })
 	history.pushState({}, "", API_PATH.LOBBY)
 	swapUsername()

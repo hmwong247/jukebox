@@ -10,7 +10,14 @@ import (
 )
 
 var (
+	// rid -> *Hub
 	HubMap = make(map[uuid.UUID]*Hub)
+
+	// sid -> *Client
+	ClientMap = make(map[uuid.UUID]*Client)
+
+	// sid -> *Hub
+	NewHubs = make(map[uuid.UUID]*Hub)
 )
 
 type Hub struct {
@@ -24,7 +31,7 @@ type Hub struct {
 	Unregister chan *Client
 }
 
-func NewHub(id uuid.UUID) *Hub {
+func CreateHub(id uuid.UUID) *Hub {
 	clients := make(map[*Client]int)
 	// // the first client is the host by default
 	// clients[client] = 7
@@ -68,6 +75,7 @@ func (h *Hub) Run() {
 
 				// clean up
 				delete(h.Clients, client)
+				delete(ClientMap, client.ID)
 				close(client.Send)
 				// check if hub should be closed
 				if len(h.Clients) == 0 {
@@ -102,6 +110,15 @@ func (h *Hub) Run() {
 					delete(h.Clients, client)
 				}
 			}
+			// case <-time.After(5 * time.Second):
+			// 	// close the hub if no one joined after some time
+			// 	rid := base64.RawURLEncoding.EncodeToString(h.ID[:])
+			// 	if len(h.Clients) == 0 {
+			// 		slog.Debug("auto close", "rid", rid)
+			// 		return
+			// 	} else {
+			// 		slog.Debug("keep running", "rid", rid)
+			// 	}
 		}
 	}
 }

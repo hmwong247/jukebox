@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"log/slog"
 	"main/core/corewebsocket"
 	"main/core/views"
@@ -16,14 +17,15 @@ var (
 	// template cache
 	// tmplHome template.Template
 
-	// for websocket connect that maps session id to user profile
-	entryMap = make(map[uuid.UUID]UserProfile)
+	// sid -> UserProfile
+	entryProfiles = make(map[uuid.UUID]*UserProfile)
 )
 
 type UserProfile struct {
 	name string
 	uid  uuid.UUID
 	rid  uuid.UUID
+	sid  uuid.UUID
 }
 
 func (userProfile *UserProfile) Index(s []UserProfile) int {
@@ -34,6 +36,24 @@ func (userProfile *UserProfile) Index(s []UserProfile) int {
 	}
 	return -1
 }
+
+func decodeQueryID(r *http.Request, key string) (uuid.UUID, error) {
+	queryParam := r.URL.Query()
+	qID := strings.TrimSpace(queryParam.Get(key))
+	decodedID, err := base64.RawURLEncoding.DecodeString(qID)
+	id, err := uuid.FromBytes(decodedID)
+	if err != nil {
+		slog.Info("invalid UUID", "qID", qID)
+		return id, err
+	}
+	slog.Debug("decode uuid", "key", key, "qID", qID)
+
+	return id, nil
+}
+
+/*
+	Pages
+*/
 
 // route: "GET /" forbidden
 func HandleRoot(w http.ResponseWriter, r *http.Request) {
@@ -48,93 +68,57 @@ func HandleDefault(w http.ResponseWriter, r *http.Request) {
 
 // route: "GET /join"
 func HandleJoin(w http.ResponseWriter, r *http.Request) {
-	// joinRoomID := r.PathValue("rid")
-	queryParam := r.URL.Query()
-	qRID := strings.TrimSpace(queryParam.Get("rid"))
-	slog.Debug("GET /join", "rid", qRID)
-	if qRID == "" {
-		http.Error(w, "forbidden", http.StatusForbidden)
+	rid, err := decodeQueryID(r, "rid")
+	if err != nil {
+		http.Error(w, "", http.StatusForbidden)
+		return
+	}
+	if _, ok := corewebsocket.HubMap[rid]; !ok {
+		slog.Info("hub not found", "rid", rid.String())
+		http.Error(w, "", http.StatusForbidden)
 		return
 	}
 
 	tmpl := template.Must(template.ParseFiles("statics/join.html", "templates/forms/user_profile.html"))
 	tmpl.Execute(w, nil)
-
-	// userUUIDBytes, err := base64.RawURLEncoding.DecodeString(joinUserID)
-	// userUUID, err := uuid.FromBytes(userUUIDBytes)
-	// if err != nil {
-	// 	log.Printf("Invalid user UUID from client: %v\n", err)
-	// 	return
-	// }
-	// roomUUIDBytes, err := base64.RawURLEncoding.DecodeString(joinRoomID)
-	// roomUUID, err := uuid.FromBytes(roomUUIDBytes)
-	// if err != nil {
-	// 	log.Printf("Invalid room UUID from client: %v\n", err)
-	// 	return
-	// }
-	// room, roomExists := musicRooms[roomUUID]
-	// var currentRoom types.CurrentRoom
-	// if roomExists {
-	// 	user := types.User{
-	// 		UserID:   userUUID,
-	// 		UserName: joinUsername,
-	// 	}
-	// 	userExists := user.Index(room.UserList)
-	// 	if userExists == -1 {
-	// 		room.UserList = append(room.UserList, user)
-	// 	}
-	//
-	// 	currentRoom = types.CurrentRoom{
-	// 		RoomID:   joinRoomID, // no change, if exists
-	// 		UserID:   joinUserID,
-	// 		Username: joinUserID,
-	// 		Host:     room.Host,
-	// 		Capacity: len(room.UserList),
-	// 		UserList: room.UserList,
-	// 	}
-	// } else {
-	// 	currentRoom = types.CurrentRoom{
-	// 		RoomID:   "n/a",
-	// 		UserID:   joinUserID,
-	// 		Username: joinUserID,
-	// 		Host:     "n/a",
-	// 		Capacity: 0,
-	// 	}
-	// }
-	//
-	// tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
-	// tmpl.ExecuteTemplate(w, "current_room", currentRoom)
 }
 
-// route: GET /lobby
+// route: GET /lobby?sid=
 func EnterLobby(w http.ResponseWriter, r *http.Request) {
-	queryParam := r.URL.Query()
-	qRoomID := strings.TrimSpace(queryParam.Get("rid"))
-	decodebase64, err := base64.RawURLEncoding.DecodeString(qRoomID)
-	roomID, err := uuid.FromBytes(decodebase64)
+	sid, err := decodeQueryID(r, "sid")
 	if err != nil {
-		slog.Info("Trying to enter lobby with invalid room UUID", "status", http.StatusForbidden)
-		http.Error(w, "forbidden", http.StatusForbidden)
+		slog.Info("Trying to enter lobby with invalid session UUID", "status", http.StatusForbidden)
+		http.Error(w, "", http.StatusForbidden)
+		return
+	}
+	client, ok := corewebsocket.ClientMap[sid]
+	if !ok {
+		slog.Info("client not found", "status", http.StatusInternalServerError, "sid", sid.String())
+		http.Error(w, "", http.StatusInternalServerError)
 		return
 	}
 
 	// check roomID exists, check user exists in room
-	hub, ok := corewebsocket.HubMap[roomID]
+	hub, ok := corewebsocket.HubMap[client.Hub.ID]
 	if !ok {
-		slog.Error("hub not found", "status", http.StatusInternalServerError, "rid", roomID.String())
-		http.Error(w, "forbidden", http.StatusInternalServerError)
+		slog.Error("hub not found", "status", http.StatusInternalServerError, "rid", sid.String())
+		http.Error(w, "", http.StatusInternalServerError)
 		return
 	}
+	base64RID := base64.RawURLEncoding.EncodeToString(hub.ID[:])
 	tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
-	// encodedBase64URL := base64.RawURLEncoding.EncodeToString(newRoom.RoomID[:])
 	session := views.RoomStatus{
-		RoomID:   qRoomID,
+		RoomID:   base64RID,
 		Host:     hub.Host.Name,
 		Capacity: len(hub.Clients),
-		// UserList: room.UserList,
+		UserList: hub.Clients,
 	}
 	tmpl.ExecuteTemplate(w, "room_status", session)
 }
+
+/*
+	API
+*/
 
 // route: "GET /api/new-user"
 func HandleNewUser(w http.ResponseWriter, r *http.Request) {
@@ -145,50 +129,93 @@ func HandleNewUser(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(encodedBase64))
 }
 
-// route: "GET /api/create"
+// route: "GET /api/create?sid"
 func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
-	rid := uuid.New()
-	hub := corewebsocket.NewHub(rid)
-	corewebsocket.HubMap[rid] = hub
-	go hub.Run()
+	sid, err := decodeQueryID(r, "sid")
+	if err != nil {
+		http.Error(w, "", http.StatusForbidden)
+		return
+	}
 
-	encodedRID := base64.RawURLEncoding.EncodeToString(rid[:])
-	w.Write([]byte(encodedRID))
+	// valid data
+	rid := uuid.New()
+	userProfile, ok := entryProfiles[sid]
+	if !ok {
+		slog.Error("user profile not found", "status", http.StatusForbidden, "sid", sid.String())
+		return
+	}
+	userProfile.rid = rid
+
+	hub := corewebsocket.CreateHub(rid)
+	corewebsocket.HubMap[rid] = hub
+	corewebsocket.NewHubs[sid] = hub
+
+	base64RID := base64.RawURLEncoding.EncodeToString(rid[:])
+	w.Write([]byte(base64RID))
 }
 
 // route: POST /api/session
 func HandleNewSession(w http.ResponseWriter, r *http.Request) {
-	// return a session id for websocket identificaion
+	// return a session id
 	pUsername := r.PostFormValue("cfg_username")
 	pUID := r.PostFormValue("user_id")
-	pRID := r.PostFormValue("room_id")
+
 	// never trust the client
 	decodedUID, err := base64.RawURLEncoding.DecodeString(pUID)
 	uid, err := uuid.FromBytes(decodedUID)
 	if err != nil {
 		slog.Info("Invalid user UUID from client:", "status", http.StatusForbidden, "err", err)
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-	decodedRID, err := base64.RawURLEncoding.DecodeString(pRID)
-	rid, err := uuid.FromBytes(decodedRID)
-	if err != nil {
-		slog.Info("Invalid room UUID from client:", "status", http.StatusForbidden, "err", err)
-		http.Error(w, "forbidden", http.StatusForbidden)
+		http.Error(w, "", http.StatusForbidden)
 		return
 	}
 	var name string = strings.TrimSpace(pUsername)
-	if name == "" {
-		name = "user"
+
+	var rid uuid.UUID
+	pRID := r.PostFormValue("room_id")
+	if len(pRID) > 0 {
+		decodedRID, err := base64.RawURLEncoding.DecodeString(pRID)
+		_rid, err := uuid.FromBytes(decodedRID)
+		rid = _rid
+		if err != nil {
+			slog.Info("Invalid room UUID from client:", "status", http.StatusForbidden, "err", err)
+			http.Error(w, "", http.StatusForbidden)
+			return
+		}
 	}
 
+	// valid data, cache the user profile
 	sid := uuid.New()
-	profile := UserProfile{
+	profile := &UserProfile{
 		name: name,
 		uid:  uid,
+		sid:  sid,
 		rid:  rid,
 	}
-	entryMap[sid] = profile
-	encodedBase64URL := base64.RawURLEncoding.EncodeToString(sid[:])
-	w.Write([]byte(encodedBase64URL))
+	entryProfiles[sid] = profile
+
+	base64SID := base64.RawURLEncoding.EncodeToString(sid[:])
+	w.Write([]byte(base64SID))
+}
+
+// route: "GET /api/users?sid="
+func UserList(w http.ResponseWriter, r *http.Request) {
+	sid, err := decodeQueryID(r, "sid")
+	if err != nil {
+		http.Error(w, "", http.StatusForbidden)
+		return
+	}
+	client, ok := corewebsocket.ClientMap[sid]
+	if !ok {
+		slog.Info("client not found from sid", "sid", sid.String())
+		http.Error(w, "", http.StatusInternalServerError)
+		return
+	}
+
+	userlist := make(map[string]string)
+	for c := range client.Hub.Clients {
+		userlist[c.ID.String()] = c.Name
+	}
+
+	json, err := json.Marshal(userlist)
+	w.Write(json)
 }

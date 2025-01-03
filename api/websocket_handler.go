@@ -1,28 +1,37 @@
 package api
 
 import (
-	"encoding/base64"
 	"log/slog"
 	"main/core/corewebsocket"
 	"net/http"
-	"strings"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // route: /ws
 func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	queryParam := r.URL.Query()
-	qSID := strings.TrimSpace(queryParam.Get("sid"))
-	decodedSID, err := base64.RawURLEncoding.DecodeString(qSID)
-	sid, err := uuid.FromBytes(decodedSID)
+	sid, err := decodeQueryID(r, "sid")
 	if err != nil {
-		slog.Info("ws: Trying to enter hub with invalid session UUID", "qSID", qSID)
-		http.Error(w, "forbidden", http.StatusForbidden)
+		slog.Info("ws: Trying to enter hub with invalid session UUID")
+		http.Error(w, "", http.StatusForbidden)
 		return
 	}
-	profile, ok := entryMap[sid]
+
+	// check if client has a connection already
+	c, ok := corewebsocket.ClientMap[sid]
+	if ok {
+		slog.Info("ws: client has already connected", "cid", c.ID.String())
+		http.Error(w, "", http.StatusForbidden)
+		return
+	}
+
+	// run the websocket hub if it is a new hub
+	newHub, ok := corewebsocket.NewHubs[sid]
+	if ok {
+		go newHub.Run()
+		delete(corewebsocket.NewHubs, sid)
+	}
+
+	profile, ok := entryProfiles[sid]
 	if !ok {
 		slog.Error("ws: session does not exeists", "status", http.StatusForbidden)
 		http.Error(w, "", http.StatusForbidden)
@@ -52,6 +61,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		Send:          make(chan []byte, 1024),
 		JoinUnixMilli: time.Now().UnixMilli(),
 	}
+	corewebsocket.ClientMap[sid] = client
 
 	// broadcast join notification
 	msg := corewebsocket.Message{
@@ -66,5 +76,5 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	go client.Write()
 
 	// clean up the entryMap
-	delete(entryMap, sid)
+	delete(entryProfiles, sid)
 }

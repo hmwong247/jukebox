@@ -1,12 +1,12 @@
 {{ define "row_room_user_list" }}
-<li>user name: {{ .UserName }}</li>
+<li>user name: {{ .Name }}<br>id: {{ .ID }}</li>
 {{ end }}
 
 {{ define "room_user_list" }}
 <ul id="room_user_list">
-    {{ range $idx, $item := .UserList }}
-    {{ with $item }}
-    {{ template "room_user_list" . }}
+    {{ range $client, $_ := .UserList }}
+    {{ with $client }}
+    {{ template "row_room_user_list" . }}
     {{ end }}
     {{ end }}
 </ul>
