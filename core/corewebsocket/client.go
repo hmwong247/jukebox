@@ -38,6 +38,7 @@ type Client struct {
 	Conn          *websocket.Conn
 	Hub           *Hub
 	ID            uuid.UUID
+	Token         uuid.UUID
 	Name          string
 	Permission    int
 	Send          chan []byte
@@ -61,7 +62,7 @@ func (c *Client) Read() {
 	defer func() {
 		c.Hub.Unregister <- c
 		c.Conn.Close()
-		slog.Debug("client disconnected", "id", c.ID)
+		slog.Debug("ws client disconnected", "id", c.ID)
 	}()
 
 	c.Conn.SetReadLimit(READSIZE)

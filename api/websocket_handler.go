@@ -7,26 +7,33 @@ import (
 	"time"
 )
 
-// route: /ws
+// route: /ws?sid=
 func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	corewebsocket.ClientMapMutex.Lock()
+	corewebsocket.TokenMapMutex.Lock()
+	defer func() {
+		corewebsocket.ClientMapMutex.Unlock()
+		corewebsocket.TokenMapMutex.Unlock()
+	}()
+
 	sid, err := decodeQueryID(r, "sid")
 	if err != nil {
 		slog.Info("ws: Trying to enter hub with invalid session UUID")
-		http.Error(w, "", http.StatusForbidden)
+		http.Error(w, "", http.StatusBadRequest)
 		return
 	}
 
 	// check if client has a connection already
-	c, ok := corewebsocket.ClientMap[sid]
-	if ok {
-		slog.Info("ws: client has already connected", "cid", c.ID.String())
-		http.Error(w, "", http.StatusForbidden)
-		return
+	if uid, ok := corewebsocket.TokenMap[sid]; ok {
+		if c, ok := corewebsocket.ClientMap[*uid]; ok {
+			slog.Info("ws: client has already connected", "uid", c.ID.String())
+			http.Error(w, "", http.StatusForbidden)
+			return
+		}
 	}
 
 	// run the websocket hub if it is a new hub
-	newHub, ok := corewebsocket.NewHubs[sid]
-	if ok {
+	if newHub, ok := corewebsocket.NewHubs[sid]; ok {
 		go newHub.Run()
 		delete(corewebsocket.NewHubs, sid)
 	}
@@ -56,12 +63,14 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		Conn:          conn,
 		Hub:           hub,
 		ID:            profile.uid,
+		Token:         sid,
 		Name:          profile.name,
 		Permission:    7,
 		Send:          make(chan []byte, 1024),
 		JoinUnixMilli: time.Now().UnixMilli(),
 	}
-	corewebsocket.ClientMap[sid] = client
+	corewebsocket.ClientMap[client.ID] = client
+	corewebsocket.TokenMap[sid] = &client.ID
 
 	// broadcast join notification
 	msg := corewebsocket.Message{
@@ -75,6 +84,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	go client.Read()
 	go client.Write()
 
-	// clean up the entryMap
+	// clean up the API entry cache
 	delete(entryProfiles, sid)
+	delete(entryToken, client.ID)
 }

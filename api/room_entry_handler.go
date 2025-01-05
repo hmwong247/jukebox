@@ -9,16 +9,24 @@ import (
 	"net/http"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/google/uuid"
+)
+
+const (
+	API_ENTRY_TIMEOUT = 5 * time.Second
 )
 
 var (
 	// template cache
 	// tmplHome template.Template
 
-	// sid -> UserProfile
+	// sid -> *UserProfile
 	entryProfiles = make(map[uuid.UUID]*UserProfile)
+
+	// uid -> *sid
+	entryToken = make(map[uuid.UUID]*uuid.UUID)
 )
 
 type UserProfile struct {
@@ -28,13 +36,14 @@ type UserProfile struct {
 	sid  uuid.UUID
 }
 
-func (userProfile *UserProfile) Index(s []UserProfile) int {
-	for i, other := range s {
-		if userProfile.uid == other.uid {
-			return i
-		}
+func (userProfile *UserProfile) timeout() {
+	select {
+	case <-time.After(API_ENTRY_TIMEOUT):
+		delete(entryProfiles, userProfile.sid)
+		delete(entryToken, userProfile.uid)
+		slog.Debug("delete user profile")
+		return
 	}
-	return -1
 }
 
 func decodeQueryID(r *http.Request, key string) (uuid.UUID, error) {
@@ -46,7 +55,7 @@ func decodeQueryID(r *http.Request, key string) (uuid.UUID, error) {
 		slog.Info("invalid UUID", "qID", qID)
 		return id, err
 	}
-	slog.Debug("decode uuid", "key", key, "qID", qID)
+	// slog.Debug("decode uuid", "key", key, "qID", qID)
 
 	return id, nil
 }
@@ -70,7 +79,7 @@ func HandleDefault(w http.ResponseWriter, r *http.Request) {
 func HandleJoin(w http.ResponseWriter, r *http.Request) {
 	rid, err := decodeQueryID(r, "rid")
 	if err != nil {
-		http.Error(w, "", http.StatusForbidden)
+		http.Error(w, "", http.StatusBadRequest)
 		return
 	}
 	if _, ok := corewebsocket.HubMap[rid]; !ok {
@@ -85,33 +94,42 @@ func HandleJoin(w http.ResponseWriter, r *http.Request) {
 
 // route: GET /lobby?sid=
 func EnterLobby(w http.ResponseWriter, r *http.Request) {
+	corewebsocket.ClientMapMutex.RLock()
+	corewebsocket.TokenMapMutex.RLock()
+	defer func() {
+		corewebsocket.ClientMapMutex.RUnlock()
+		corewebsocket.TokenMapMutex.RUnlock()
+	}()
+
 	sid, err := decodeQueryID(r, "sid")
 	if err != nil {
 		slog.Info("Trying to enter lobby with invalid session UUID", "status", http.StatusForbidden)
-		http.Error(w, "", http.StatusForbidden)
+		http.Error(w, "", http.StatusBadRequest)
 		return
 	}
-	client, ok := corewebsocket.ClientMap[sid]
-	if !ok {
-		slog.Info("client not found", "status", http.StatusInternalServerError, "sid", sid.String())
-		http.Error(w, "", http.StatusInternalServerError)
+	var client *corewebsocket.Client
+	if uid, ok := corewebsocket.TokenMap[sid]; ok {
+		if _client, ok := corewebsocket.ClientMap[*uid]; ok {
+			client = _client
+		} else {
+			slog.Info("client not found", "status", http.StatusInternalServerError, "uid", _client.ID.String())
+			http.Error(w, "", http.StatusForbidden)
+			return
+		}
+	} else {
+		slog.Info("token not found", "status", http.StatusForbidden, "sid", sid.String())
+		http.Error(w, "", http.StatusForbidden)
 		return
 	}
 
 	// check roomID exists, check user exists in room
-	hub, ok := corewebsocket.HubMap[client.Hub.ID]
-	if !ok {
-		slog.Error("hub not found", "status", http.StatusInternalServerError, "rid", sid.String())
-		http.Error(w, "", http.StatusInternalServerError)
-		return
-	}
-	base64RID := base64.RawURLEncoding.EncodeToString(hub.ID[:])
+	base64RID := base64.RawURLEncoding.EncodeToString(client.Hub.ID[:])
 	tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
 	session := views.RoomStatus{
 		RoomID:   base64RID,
-		Host:     hub.Host.Name,
-		Capacity: len(hub.Clients),
-		UserList: hub.Clients,
+		Host:     client.Hub.Host.Name,
+		Capacity: len(client.Hub.Clients),
+		UserList: client.Hub.Clients,
 	}
 	tmpl.ExecuteTemplate(w, "room_status", session)
 }
@@ -129,11 +147,73 @@ func HandleNewUser(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(encodedBase64))
 }
 
+// route: POST /api/session
+func HandleNewSession(w http.ResponseWriter, r *http.Request) {
+	corewebsocket.ClientMapMutex.RLock()
+	defer corewebsocket.ClientMapMutex.RUnlock()
+	// return a session id
+	pUsername := r.PostFormValue("cfg_username")
+	pUID := r.PostFormValue("user_id")
+
+	// never trust the client
+	decodedUID, err := base64.RawURLEncoding.DecodeString(pUID)
+	uid, err := uuid.FromBytes(decodedUID)
+	if err != nil {
+		slog.Info("Invalid user UUID from client:", "status", http.StatusBadRequest, "err", err)
+		http.Error(w, "", http.StatusBadRequest)
+		return
+	}
+	var name string = strings.TrimSpace(pUsername)
+
+	var rid uuid.UUID
+	pRID := r.PostFormValue("room_id")
+	if len(pRID) > 0 {
+		decodedRID, err := base64.RawURLEncoding.DecodeString(pRID)
+		_rid, err := uuid.FromBytes(decodedRID)
+		rid = _rid
+		if err != nil {
+			slog.Info("Invalid room UUID from client:", "status", http.StatusBadRequest, "err", err)
+			http.Error(w, "", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// valid data
+	// check user holds a sid already
+	if _, ok := entryToken[uid]; ok {
+		slog.Info("client has a token already", "endpoint", "POST /api/session", "uid", uid.String())
+		http.Error(w, "", http.StatusForbidden)
+		return
+	}
+
+	// check if client has a connection already
+	if c, ok := corewebsocket.ClientMap[uid]; ok {
+		slog.Info("client has already connected", "endpoint", "POST /api/session", "uid", c.ID.String())
+		http.Error(w, "", http.StatusForbidden)
+		return
+	}
+
+	// cache the user profile
+	sid := uuid.New()
+	profile := &UserProfile{
+		name: name,
+		uid:  uid,
+		sid:  sid,
+		rid:  rid,
+	}
+	entryProfiles[sid] = profile
+	entryToken[uid] = &sid
+	go profile.timeout()
+
+	base64SID := base64.RawURLEncoding.EncodeToString(sid[:])
+	w.Write([]byte(base64SID))
+}
+
 // route: "GET /api/create?sid"
 func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	sid, err := decodeQueryID(r, "sid")
 	if err != nil {
-		http.Error(w, "", http.StatusForbidden)
+		http.Error(w, "", http.StatusBadRequest)
 		return
 	}
 
@@ -154,61 +234,26 @@ func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(base64RID))
 }
 
-// route: POST /api/session
-func HandleNewSession(w http.ResponseWriter, r *http.Request) {
-	// return a session id
-	pUsername := r.PostFormValue("cfg_username")
-	pUID := r.PostFormValue("user_id")
-
-	// never trust the client
-	decodedUID, err := base64.RawURLEncoding.DecodeString(pUID)
-	uid, err := uuid.FromBytes(decodedUID)
-	if err != nil {
-		slog.Info("Invalid user UUID from client:", "status", http.StatusForbidden, "err", err)
-		http.Error(w, "", http.StatusForbidden)
-		return
-	}
-	var name string = strings.TrimSpace(pUsername)
-
-	var rid uuid.UUID
-	pRID := r.PostFormValue("room_id")
-	if len(pRID) > 0 {
-		decodedRID, err := base64.RawURLEncoding.DecodeString(pRID)
-		_rid, err := uuid.FromBytes(decodedRID)
-		rid = _rid
-		if err != nil {
-			slog.Info("Invalid room UUID from client:", "status", http.StatusForbidden, "err", err)
-			http.Error(w, "", http.StatusForbidden)
-			return
-		}
-	}
-
-	// valid data, cache the user profile
-	sid := uuid.New()
-	profile := &UserProfile{
-		name: name,
-		uid:  uid,
-		sid:  sid,
-		rid:  rid,
-	}
-	entryProfiles[sid] = profile
-
-	base64SID := base64.RawURLEncoding.EncodeToString(sid[:])
-	w.Write([]byte(base64SID))
-}
-
 // route: "GET /api/users?sid="
 func UserList(w http.ResponseWriter, r *http.Request) {
+	corewebsocket.ClientMapMutex.RLock()
+	defer corewebsocket.ClientMapMutex.RUnlock()
+
 	sid, err := decodeQueryID(r, "sid")
 	if err != nil {
-		http.Error(w, "", http.StatusForbidden)
+		http.Error(w, "", http.StatusBadRequest)
 		return
 	}
-	client, ok := corewebsocket.ClientMap[sid]
-	if !ok {
-		slog.Info("client not found from sid", "sid", sid.String())
-		http.Error(w, "", http.StatusInternalServerError)
-		return
+
+	var client *corewebsocket.Client
+	if uid, ok := corewebsocket.TokenMap[sid]; ok {
+		_client, ok := corewebsocket.ClientMap[*uid]
+		if !ok {
+			slog.Info("client not found from sid", "sid", sid.String())
+			http.Error(w, "", http.StatusInternalServerError)
+			return
+		}
+		client = _client
 	}
 
 	userlist := make(map[string]string)

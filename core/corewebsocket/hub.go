@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"math"
+	"sync"
 
 	"github.com/google/uuid"
 )
@@ -13,8 +14,13 @@ var (
 	// rid -> *Hub
 	HubMap = make(map[uuid.UUID]*Hub)
 
-	// sid -> *Client
-	ClientMap = make(map[uuid.UUID]*Client)
+	// uid -> *Client
+	ClientMap      = make(map[uuid.UUID]*Client)
+	ClientMapMutex = sync.RWMutex{}
+
+	// sid -> *uid
+	TokenMap      = make(map[uuid.UUID]*uuid.UUID)
+	TokenMapMutex = sync.RWMutex{}
 
 	// sid -> *Hub
 	NewHubs = make(map[uuid.UUID]*Hub)
@@ -63,6 +69,13 @@ func (h *Hub) Run() {
 				h.Host = client
 			}
 		case client := <-h.Unregister:
+			ClientMapMutex.Lock()
+			TokenMapMutex.Lock()
+			// defer func() {
+			// 	ClientMapMutex.Unlock()
+			// 	TokenMapMutex.Unlock()
+			// }()
+
 			if _, ok := h.Clients[client]; ok {
 				// broadcast leave notification
 				msg := Message{
@@ -76,11 +89,16 @@ func (h *Hub) Run() {
 				// clean up
 				delete(h.Clients, client)
 				delete(ClientMap, client.ID)
+				delete(TokenMap, client.Token)
 				close(client.Send)
 				// check if hub should be closed
 				if len(h.Clients) == 0 {
 					idStr := base64.RawURLEncoding.EncodeToString(h.ID[:])
-					slog.Debug("hub closed: no client in hub", "id", idStr)
+					slog.Debug("ws hub closed: no client in hub", "id", idStr)
+
+					// unlock mutex
+					ClientMapMutex.Unlock()
+					TokenMapMutex.Unlock()
 					return
 				} else {
 					// check host transfer
@@ -96,12 +114,15 @@ func (h *Hub) Run() {
 					}
 				}
 			}
+			// unlock mutex
+			ClientMapMutex.Unlock()
+			TokenMapMutex.Unlock()
 		case msg := <-h.Broadcast:
 			msgJson, err := json.Marshal(msg)
 			if err != nil {
 				slog.Error("json err", "err", err)
 			}
-			slog.Debug("ws msg", "cid", msg.UID, "msg", msg.Data)
+			slog.Debug("ws msg", "uid", msg.UID, "msg", msg.Data)
 			for client := range h.Clients {
 				select {
 				case client.Send <- []byte(msgJson):
