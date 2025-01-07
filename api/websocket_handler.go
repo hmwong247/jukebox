@@ -12,8 +12,8 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	corewebsocket.ClientMapMutex.Lock()
 	corewebsocket.TokenMapMutex.Lock()
 	defer func() {
-		corewebsocket.ClientMapMutex.Unlock()
 		corewebsocket.TokenMapMutex.Unlock()
+		corewebsocket.ClientMapMutex.Unlock()
 	}()
 
 	sid, err := decodeQueryID(r, "sid")
@@ -40,13 +40,13 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	profile, ok := entryProfiles[sid]
 	if !ok {
-		slog.Error("ws: session does not exeists", "status", http.StatusForbidden)
+		slog.Error("ws: session does not exists", "status", http.StatusForbidden)
 		http.Error(w, "", http.StatusForbidden)
 		return
 	}
 	hub, ok := corewebsocket.HubMap[profile.rid]
 	if !ok {
-		slog.Error("ws: hub does not exeists", "status", http.StatusInternalServerError)
+		slog.Error("ws: hub does not exists", "status", http.StatusInternalServerError)
 		http.Error(w, "", http.StatusInternalServerError)
 		return
 	}

@@ -209,7 +209,7 @@ func HandleNewSession(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(base64SID))
 }
 
-// route: "GET /api/create?sid"
+// route: "GET /api/create?sid="
 func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	sid, err := decodeQueryID(r, "sid")
 	if err != nil {
@@ -218,12 +218,18 @@ func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// valid data
-	rid := uuid.New()
 	userProfile, ok := entryProfiles[sid]
 	if !ok {
-		slog.Error("user profile not found", "status", http.StatusForbidden, "sid", sid.String())
+		slog.Info("user profile not found", "status", http.StatusForbidden, "sid", sid.String())
+		http.Error(w, "", http.StatusForbidden)
 		return
 	}
+	if _, ok := corewebsocket.NewHubs[sid]; ok {
+		slog.Info("already created a new hub for client", "status", http.StatusTooManyRequests, "sid", sid.String())
+		http.Error(w, "", http.StatusTooManyRequests)
+		return
+	}
+	rid := uuid.New()
 	userProfile.rid = rid
 
 	hub := corewebsocket.CreateHub(rid)
@@ -237,7 +243,11 @@ func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 // route: "GET /api/users?sid="
 func UserList(w http.ResponseWriter, r *http.Request) {
 	corewebsocket.ClientMapMutex.RLock()
-	defer corewebsocket.ClientMapMutex.RUnlock()
+	corewebsocket.TokenMapMutex.RLock()
+	defer func() {
+		corewebsocket.TokenMapMutex.RUnlock()
+		corewebsocket.ClientMapMutex.RUnlock()
+	}()
 
 	sid, err := decodeQueryID(r, "sid")
 	if err != nil {
@@ -254,6 +264,10 @@ func UserList(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		client = _client
+	} else {
+		slog.Info("token from client does not exists", "sid", sid.String())
+		http.Error(w, "", http.StatusForbidden)
+		return
 	}
 
 	userlist := make(map[string]string)

@@ -62,7 +62,7 @@ func (c *Client) Read() {
 	defer func() {
 		c.Hub.Unregister <- c
 		c.Conn.Close()
-		slog.Debug("ws client disconnected", "id", c.ID)
+		slog.Debug("ws client: defer read", "rid", c.Hub.ID.String(), "uid", c.ID.String())
 	}()
 
 	c.Conn.SetReadLimit(READSIZE)
@@ -73,7 +73,7 @@ func (c *Client) Read() {
 		_, msgRead, err := c.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				slog.Error("ws client error", "err", err)
+				slog.Error("ws client read error", "err", err)
 			}
 			return
 		}
@@ -94,6 +94,7 @@ func (c *Client) Write() {
 	defer func() {
 		ticker.Stop()
 		c.Conn.Close()
+		slog.Debug("ws client: defer write", "rid", c.Hub.ID.String(), "uid", c.ID.String())
 	}()
 
 	for {
@@ -108,19 +109,19 @@ func (c *Client) Write() {
 
 			w, err := c.Conn.NextWriter(websocket.TextMessage)
 			if err != nil {
-				slog.Error("ws client write err", "err", err)
+				slog.Error("ws client write err NextWriter", "err", err)
 				return
 			}
 			w.Write(msg)
 			if err := w.Close(); err != nil {
-				slog.Error("ws client write err", "err", err)
+				slog.Error("ws client write err w.Close", "err", err)
 				return
 			}
 		case <-ticker.C:
 			// ping message
 			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				slog.Error("ws client write err", "err", err)
+				slog.Error("ws client write err ping", "err", err)
 				return
 			}
 		}

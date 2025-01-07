@@ -27,12 +27,15 @@ func main() {
 
 	// handle room operations
 	mux.HandleFunc("/", api.HandleRoot)
+	// views
 	mux.HandleFunc("GET /home", api.HandleDefault)
 	mux.HandleFunc("GET /join", api.HandleJoin)
 	mux.HandleFunc("GET /lobby", api.EnterLobby)
+	// api
 	mux.HandleFunc("GET /api/new-user", api.HandleNewUser)
-	mux.HandleFunc("GET /api/create", api.HandleCreateRoom)
 	mux.HandleFunc("POST /api/session", api.HandleNewSession)
+	mux.HandleFunc("GET /api/create", api.HandleCreateRoom)
+	mux.HandleFunc("GET /api/users", api.UserList)
 
 	// WebSocket
 	mux.HandleFunc("/ws", api.HandleWebSocket)

@@ -71,10 +71,6 @@ func (h *Hub) Run() {
 		case client := <-h.Unregister:
 			ClientMapMutex.Lock()
 			TokenMapMutex.Lock()
-			// defer func() {
-			// 	ClientMapMutex.Unlock()
-			// 	TokenMapMutex.Unlock()
-			// }()
 
 			if _, ok := h.Clients[client]; ok {
 				// broadcast leave notification
@@ -97,8 +93,8 @@ func (h *Hub) Run() {
 					slog.Debug("ws hub closed: no client in hub", "id", idStr)
 
 					// unlock mutex
-					ClientMapMutex.Unlock()
 					TokenMapMutex.Unlock()
+					ClientMapMutex.Unlock()
 					return
 				} else {
 					// check host transfer
@@ -115,8 +111,8 @@ func (h *Hub) Run() {
 				}
 			}
 			// unlock mutex
-			ClientMapMutex.Unlock()
 			TokenMapMutex.Unlock()
+			ClientMapMutex.Unlock()
 		case msg := <-h.Broadcast:
 			msgJson, err := json.Marshal(msg)
 			if err != nil {
