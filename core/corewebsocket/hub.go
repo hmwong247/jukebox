@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -35,6 +36,7 @@ type Hub struct {
 	// control channel
 	Register   chan *Client
 	Unregister chan *Client
+	Destroy    chan int
 }
 
 func CreateHub(id uuid.UUID) *Hub {
@@ -49,6 +51,7 @@ func CreateHub(id uuid.UUID) *Hub {
 		Broadcast:  make(chan Message),
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
+		Destroy:    make(chan int),
 	}
 }
 
@@ -127,15 +130,27 @@ func (h *Hub) Run() {
 					delete(h.Clients, client)
 				}
 			}
-			// case <-time.After(5 * time.Second):
-			// 	// close the hub if no one joined after some time
-			// 	rid := base64.RawURLEncoding.EncodeToString(h.ID[:])
-			// 	if len(h.Clients) == 0 {
-			// 		slog.Debug("auto close", "rid", rid)
-			// 		return
-			// 	} else {
-			// 		slog.Debug("keep running", "rid", rid)
-			// 	}
+		case cmd := <-h.Destroy:
+			slog.Debug("hub received c4", "cmd", cmd)
+			close(h.Destroy)
+			return
+		}
+	}
+}
+
+func (h *Hub) Timeout(sid *uuid.UUID) {
+	select {
+	case <-time.After(5 * time.Second):
+		// close the hub if no one joined after some time
+		rid := base64.RawURLEncoding.EncodeToString(h.ID[:])
+		if len(h.Clients) == 0 {
+			slog.Debug("auto close", "rid", rid)
+			delete(NewHubs, *sid)
+			h.Destroy <- 0
+			return
+		} else {
+			slog.Debug("keep running", "rid", rid)
+			return
 		}
 	}
 }

@@ -1,5 +1,5 @@
 {{ define "row_room_user_list" }}
-<li>user name: {{ .Name }}<br>id: {{ .ID }}</li>
+<li id=uid{{.ID}}>user name: {{ .Name }}<br>id: {{ .ID }}</li>
 {{ end }}
 
 {{ define "room_user_list" }}
@@ -14,10 +14,18 @@
 
 {{ define "room_status" }}
 <div>
-    <p id="username">user name: </p>
-    <p id="room_id">roomd id: {{ .RoomID }}</p>
-    <p id="room_host">host: {{ .Host }}</p>
-    <p id="room_capacity">capacity: {{ .Capacity }}</p>
+    <p style="display:inline">user name:
+    <div style="display:inline" id="username"></div>
+    </p>
+    <p style="display:inline">roomd id:
+    <div style="display:inline" id="room_id">{{ .RoomID }}</div>
+    </p>
+    <p style="display:inline">host:
+    <div style="display:inline" id="room_host">{{ .Host }}</div>
+    </p>
+    <p style="display:inline">capacity:
+    <div style="display:inline" id="room_capacity">{{ .Capacity }}</div>
+    </p>
     {{ template "room_user_list" . }}
 </div>
 {{ end }}

@@ -1,6 +1,5 @@
 {
   "dependencies": {
-    "htmx.org": "^1.9.12",
-    "socket.io-client": "^4.8.1"
+    "htmx.org": "^2.0.4"
   }
 }

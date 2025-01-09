@@ -235,6 +235,8 @@ func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	hub := corewebsocket.CreateHub(rid)
 	corewebsocket.HubMap[rid] = hub
 	corewebsocket.NewHubs[sid] = hub
+	// reclaim memory when anything goes wrong
+	go hub.Timeout(&sid)
 
 	base64RID := base64.RawURLEncoding.EncodeToString(rid[:])
 	w.Write([]byte(base64RID))

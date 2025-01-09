@@ -8,11 +8,13 @@ const session = {
 
 const API_PATH = {
 	NEW_USER: "/api/new-user",
-	CREATE: "/api/create",
 	SESSION: "/api/session",
-	JOIN: "/api/join",
+	CREATE: "/api/create",
+	USERS: "/api/users",
+	JOIN: "/join",
 	WEBSOCKET: "/ws",
 	LOBBY: "/lobby",
+	HOME: "/home",
 }
 
 /**
@@ -41,15 +43,17 @@ function hxGetUserID() {
 
 async function fetchUserID() {
 	if (window.localStorage.getItem("userID") == null) {
-		const uid = await fetch(API_PATH.NEW_USER).then(res => { return res.text() }).catch(err => { console.error(err) })
+		const uid = await fetch(API_PATH.NEW_USER).then(res => {
+			if (res.ok) {
+				return res.text()
+			} else {
+				throw new Error(`fetchUserID, err:${res.statusText}`)
+			}
+		}).catch(err => {
+			throw err
+		})
 		window.localStorage.setItem("userID", uid)
 	}
-}
-
-async function fetchRoomID() {
-	const path = API_PATH.CREATE + "?sid=" + session.sessionID
-	const rid = await fetch(path).then(res => { return res.text() }).catch(err => { console.error(err) })
-	session.roomID = rid
 }
 
 async function fetchSessionID(form) {
@@ -60,7 +64,13 @@ async function fetchSessionID(form) {
 		method: "POST",
 		body: formData
 	}).then((res) => {
-		return res.text()
+		if (res.ok) {
+			return res.text()
+		} else {
+			throw new Error(`fetchSessionID, err:${res.statusText}`)
+		}
+	}).catch(err => {
+		throw err
 	})
 	session.sessionID = sid
 }
@@ -74,19 +84,47 @@ async function fetchSessionIDJoin(form) {
 		method: "POST",
 		body: formData
 	}).then((res) => {
-		return res.text()
+		if (res.ok) {
+			return res.text()
+		} else {
+			throw new Error(`fetchSessionIDJoin, err:${res.statusText}`)
+		}
+	}).catch(err => {
+		throw err
 	})
 	session.sessionID = sid
 }
 
+async function fetchRoomID() {
+	const path = API_PATH.CREATE + "?sid=" + session.sessionID
+	const rid = await fetch(path).then(res => {
+		if (res.ok) {
+			return res.text()
+		} else {
+			throw new Error(`fetchRoomID, err:${res.statusText}`)
+		}
+	}).catch(err => {
+		throw err
+	})
+	session.roomID = rid
+}
+
 async function connectWebSocket() {
-	const origin = document.location.href
-	const domain = origin.split('://').pop().split("/").shift()
-	const wsPath = "ws://" + domain + API_PATH.WEBSOCKET + "?sid=" + session.sessionID
+	const wsPath = "ws://" + document.location.host + API_PATH.WEBSOCKET + "?sid=" + session.sessionID
 	await connectWS(wsPath).then(() => {
 		console.log("ws connected")
 	}).catch((err) => {
-		console.error("ws err:" + err)
+		console.error(`ws err: ${err}`)
+	})
+}
+
+function fetchUserList() {
+	// store the user list in session, we have to
+	return new Promise((resolve, reject) => {
+		const path = API_PATH.USERS + "?sid=" + session.sessionID
+		fetch(path)
+			.then(res => { resolve(res.json()) })
+			.catch(err => { reject(err) })
 	})
 }
 
@@ -96,25 +134,35 @@ async function requestNewRoom(event, form) {
 	const cfgUsername = document.forms["user_profile"]["cfg_username"].value.trim()
 	if (cfgUsername != null && cfgUsername.length) {
 		session.username = cfgUsername
+	} else {
+		document.forms["user_profile"]["cfg_username"].value = session.username
 	}
 
 	// fetch user ID
-	await fetchUserID()
+	try {
+		await fetchUserID()
 
-	// fetch session ID
-	await fetchSessionID(form)
+		// fetch session ID
+		await fetchSessionID(form)
 
-	// fetch room ID
-	await fetchRoomID()
+		// fetch room ID
+		await fetchRoomID()
 
-	// connect to the websocket
-	await connectWebSocket()
+		// connect to the websocket
+		await connectWebSocket()
+	} catch (err) {
+		console.error(err)
+		return
+	}
 
 	// render the lobby page
 	const lobbyPath = API_PATH.LOBBY + "?sid=" + session.sessionID
 	await htmx.ajax("GET", lobbyPath, { target: "#div_swap", })
 	history.pushState({}, "", API_PATH.LOBBY)
-	swapUsername()
+	swapUsername(session.username)
+	swapInviteLink(document.querySelector("#room_id").innerHTML)
+
+	fetchUserList().then(data => session.userList = data)
 }
 
 async function requestJoinRoom(event, form) {
@@ -123,6 +171,8 @@ async function requestJoinRoom(event, form) {
 	const cfgUsername = document.forms["user_profile"]["cfg_username"].value.trim()
 	if (cfgUsername != null && cfgUsername.length) {
 		session.username = cfgUsername
+	} else {
+		document.forms["user_profile"]["cfg_username"].value = session.username
 	}
 
 	// get room ID
@@ -131,20 +181,28 @@ async function requestJoinRoom(event, form) {
 	session.roomID = urlParams.get("rid")
 	console.log(session.roomID)
 
-	// fetch user ID
-	await fetchUserID()
+	try {
+		// fetch user ID
+		await fetchUserID()
 
-	// fetch session ID
-	await fetchSessionIDJoin(form)
+		// fetch session ID
+		await fetchSessionIDJoin(form)
 
-	// connect to the websocket
-	await connectWebSocket()
+		// connect to the websocket
+		await connectWebSocket()
+	} catch (err) {
+		console.error(err)
+		return
+	}
 
 	// render the lobby page
 	const lobbyPath = API_PATH.LOBBY + "?sid=" + session.sessionID
-	await htmx.ajax("GET", lobbyPath, { target: "#div_swap", })
+	await htmx.ajax("GET", lobbyPath, { target: "#div_swap", }).catch(err => { console.error(err); return })
 	history.pushState({}, "", API_PATH.LOBBY)
-	swapUsername()
+	swapUsername(session.username)
+	swapInviteLink(document.querySelector("#room_id").innerHTML)
+
+	fetchUserList().then(data => session.userList = data)
 }
 
 
@@ -152,61 +210,34 @@ async function requestJoinRoom(event, form) {
  * UI/UX related functions
  */
 
-function generateInviteLink(code) {
-	const origin = document.location.href
-	const proto = origin.split('://').shift()
-	const domain = origin.split('://').pop().split("/").shift()
-	const endpoint = API_PATH.JOIN + "/" + code
-
-	return proto + "://" + domain + endpoint
+// redirect to home page
+function autoResetPage() {
+	htmx.ajax("GET", API_PATH.HOME, { target: "#div_swap" }).catch(err => { console.error(err); return })
 }
 
-function swapInviteLink() {
-	const inner = document.querySelector("#current_room_id").innerHTML
-	const head = inner.split(":").shift()
-	const code = inner.split(": ").pop()
-	if (code != "n/a") {
-		document.querySelector("#current_room_id").innerHTML = head + ": " + generateInviteLink(code)
-		window.localStorage.setItem("roomID", code)
+function swapInviteLink(code) {
+	const link = document.location.origin + API_PATH.JOIN + "?rid=" + code
+	document.querySelector("#room_id").innerHTML = link
+}
+
+function swapUsername(name) {
+	document.querySelector("#username").innerHTML = name
+}
+
+function swapHost(host) {
+	document.querySelector("#room_host").innerHTML = host
+}
+
+function swapRoomCapacity(size) {
+	document.querySelector("#room_capacity").innerHTML = size
+}
+
+function swapUserList(id, username, isAdd = true) {
+	if (isAdd) {
+		const row = `<li id=\"uid${id}\">user name: ${username}<br>id: ${id}</li>`
+		htmx.swap("#room_user_list", row, { swapStyle: "beforeend" })
+	} else {
+		htmx.remove(htmx.find(`#uid${id}`))
 	}
 }
 
-function swapUsername() {
-	const inner = document.querySelector("#username").innerHTML
-	const prefix = inner.split(": ").shift()
-	const username = session.username
-	document.querySelector("#username").innerHTML = prefix + ": " + username
-}
-
-function updateRoomStatus(msg) {
-	const payload = msg.Data
-	switch (payload) {
-		case "join": {
-			const inner = document.querySelector("#room_capacity").innerHTML
-			const prefix = inner.split(": ").shift()
-			const capacity = parseInt(inner.split(": ").pop()) + 1
-			document.querySelector("#room_capacity").innerHTML = prefix + ": " + capacity
-			console.log(prefix + capacity)
-			// update the userlist
-			break
-		}
-		case "left": {
-			const inner = document.querySelector("#room_capacity").innerHTML
-			const prefix = inner.split(": ").shift()
-			const capacity = parseInt(inner.split(": ").pop()) - 1
-			document.querySelector("#room_capacity").innerHTML = prefix + ": " + capacity
-			console.log(prefix + capacity)
-			break
-		}
-		case "host": {
-			const inner = document.querySelector("#room_host").innerHTML
-			const prefix = inner.split(": ").shift()
-			const host = msg.Username
-			document.querySelector("#room_host").innerHTML = prefix + ": " + host
-			console.log(prefix + host)
-			break
-		}
-		default:
-			break
-	}
-}
