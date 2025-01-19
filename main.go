@@ -24,6 +24,8 @@ func main() {
 	mux.Handle("GET /scripts/", http.StripPrefix("/scripts/", jsFS))
 	nodeFS := http.FileServer(http.Dir("node_modules"))
 	mux.Handle("GET /node_modules/", http.StripPrefix("/node_modules/", nodeFS))
+	styleFS := http.FileServer(http.Dir("styles"))
+	mux.Handle("GET /styles/", http.StripPrefix("/styles/", styleFS))
 
 	// handle room operations
 	mux.HandleFunc("/", api.HandleRoot)
@@ -36,6 +38,7 @@ func main() {
 	mux.HandleFunc("POST /api/session", api.HandleNewSession)
 	mux.HandleFunc("GET /api/create", api.HandleCreateRoom)
 	mux.HandleFunc("GET /api/users", api.UserList)
+	mux.HandleFunc("POST /api/enqueue", api.SubmittedtoQueue)
 
 	// WebSocket
 	mux.HandleFunc("/ws", api.HandleWebSocket)

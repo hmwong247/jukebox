@@ -11,6 +11,7 @@ const API_PATH = {
 	SESSION: "/api/session",
 	CREATE: "/api/create",
 	USERS: "/api/users",
+	ENQUEUE: "/api/enqueue",
 	JOIN: "/join",
 	WEBSOCKET: "/ws",
 	LOBBY: "/lobby",
@@ -27,14 +28,6 @@ addEventListener("DOMContentLoaded", async () => {
 // this is detached for later use after bootstrap
 async function onDOMContentLoaded() {
 	//htmx.logAll()
-}
-
-/**
- * HTMX direct call
- */
-
-function hxGetUserID() {
-	return window.localStorage.getItem("userID")
 }
 
 /**
@@ -205,6 +198,25 @@ async function requestJoinRoom(event, form) {
 	fetchUserList().then(data => session.userList = data)
 }
 
+async function submitURL(event, form) {
+	formData = new FormData(form)
+	formData.append("user_id", window.localStorage.getItem("userID"))
+
+	const data = await fetch(API_PATH.ENQUEUE + "?sid=" + session.sessionID, {
+		method: "POST",
+		body: formData
+	}).then((res) => {
+		if (res.ok) {
+			return res.text()
+		} else {
+			throw new Error(`fetchSessionID, err:${res.statusText}`)
+		}
+	}).catch(err => {
+		throw err
+	})
+
+	console.log(data)
+}
 
 /**
  * UI/UX related functions
@@ -213,6 +225,29 @@ async function requestJoinRoom(event, form) {
 // redirect to home page
 function autoResetPage() {
 	htmx.ajax("GET", API_PATH.HOME, { target: "#div_swap" }).catch(err => { console.error(err); return })
+}
+
+function copyLink() {
+	const link = document.querySelector("#room_id").innerHTML
+	if (navigator.clipboard && window.isSecureContext) {
+		navigator.clipboard.writeText(link)
+			.then(data => { console.log(data) })
+			.catch(err => { console.log(err) })
+	} else {
+		const textArea = document.createElement("textarea")
+		textArea.value = link
+		textArea.style.position = "fixed" // avoid scrolling to bottom
+		document.body.appendChild(textArea)
+		textArea.select()
+
+		try {
+			document.execCommand("copy")
+		} catch (err) {
+			console.log(err)
+		} finally {
+			textArea.remove()
+		}
+	}
 }
 
 function swapInviteLink(code) {

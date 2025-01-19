@@ -122,7 +122,7 @@ func EnterLobby(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// check roomID exists, check user exists in room
+	// render room status
 	base64RID := base64.RawURLEncoding.EncodeToString(client.Hub.ID[:])
 	tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
 	session := views.RoomStatus{
@@ -132,6 +132,10 @@ func EnterLobby(w http.ResponseWriter, r *http.Request) {
 		UserList: client.Hub.Clients,
 	}
 	tmpl.ExecuteTemplate(w, "room_status", session)
+
+	// render music queue
+	tmpl = template.Must(template.ParseFiles("templates/CurrentQueue.html"))
+	tmpl.ExecuteTemplate(w, "room_queue", nil)
 }
 
 /*
@@ -147,7 +151,7 @@ func HandleNewUser(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(encodedBase64))
 }
 
-// route: POST /api/session
+// route: "POST /api/session"
 func HandleNewSession(w http.ResponseWriter, r *http.Request) {
 	corewebsocket.ClientMapMutex.RLock()
 	defer corewebsocket.ClientMapMutex.RUnlock()

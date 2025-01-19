@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"log/slog"
+	"main/core/playlist"
 	"math"
 	"sync"
 	"time"
@@ -31,6 +32,7 @@ type Hub struct {
 	ID        uuid.UUID
 	Host      *Client
 	Clients   map[*Client]int // multiple host is allowed
+	Playlist  *playlist.Playlist
 	Broadcast chan Message
 
 	// control channel
@@ -48,6 +50,7 @@ func CreateHub(id uuid.UUID) *Hub {
 		ID:         id,
 		Host:       nil,
 		Clients:    clients,
+		Playlist:   playlist.New(),
 		Broadcast:  make(chan Message),
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
@@ -62,6 +65,7 @@ func (h *Hub) Run() {
 		close(h.Unregister)
 		close(h.Broadcast)
 		delete(HubMap, h.ID)
+		h.Playlist.Clear()
 	}()
 	for {
 		select {

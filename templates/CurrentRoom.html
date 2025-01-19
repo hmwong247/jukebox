@@ -3,7 +3,7 @@
 {{ end }}
 
 {{ define "room_user_list" }}
-<ul id="room_user_list">
+<ul id="room_user_list" class="current_user_list">
     {{ range $client, $_ := .UserList }}
     {{ with $client }}
     {{ template "row_room_user_list" . }}
@@ -19,7 +19,7 @@
     </p>
     <p style="display:inline">roomd id:
     <div style="display:inline" id="room_id">{{ .RoomID }}</div>
-    </p>
+    <button style="display:inline" onclick="copyLink()">Copy</button></p>
     <p style="display:inline">host:
     <div style="display:inline" id="room_host">{{ .Host }}</div>
     </p>

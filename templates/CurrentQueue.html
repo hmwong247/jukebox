@@ -1,0 +1,26 @@
+{{ define "form_queue" }}
+<div id=swap_action>
+    <form name="user_queue" action="javascript:void(0)" onsubmit="submitURL(event, this)">
+        <fieldset>
+            <legend>Queue</legend>
+            <div>
+                <input name="post_url" id="post_url" placeholder="submit an URL..." />
+                <button type="submit" style="display:inline">add to queue</button>
+            </div>
+        </fieldset>
+    </form>
+</div>
+{{ end }}
+
+{{ define "room_queue_list" }}
+<ul id="room_queue_list">
+
+</ul>
+{{ end }}
+
+{{ define "room_queue" }}
+<div>
+    {{ template "form_queue" }}
+    {{ template "room_queue_list" }}
+</div>
+{{ end }}
