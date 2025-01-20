@@ -4,6 +4,8 @@ const session = {
 	roomID: "",
 	username: "user",
 	userList: {},
+	audioArrBuf: {},
+	audioContext: new AudioContext(),
 }
 
 const API_PATH = {
@@ -202,20 +204,20 @@ async function submitURL(event, form) {
 	formData = new FormData(form)
 	formData.append("user_id", window.localStorage.getItem("userID"))
 
-	const data = await fetch(API_PATH.ENQUEUE + "?sid=" + session.sessionID, {
+	await fetch(API_PATH.ENQUEUE + "?sid=" + session.sessionID, {
 		method: "POST",
 		body: formData
 	}).then((res) => {
 		if (res.ok) {
-			return res.text()
+			res.arrayBuffer().then(data => {
+				session.audioArrBuf = data
+			})
 		} else {
-			throw new Error(`fetchSessionID, err:${res.statusText}`)
+			throw new Error(`submitURL, err:${res.statusText}`)
 		}
 	}).catch(err => {
 		throw err
 	})
-
-	console.log(data)
 }
 
 /**
@@ -276,3 +278,16 @@ function swapUserList(id, username, isAdd = true) {
 	}
 }
 
+/**
+ * web audio
+ */
+async function playAudio() {
+	// Create a source node from the buffer
+	var source = session.audioContext.createBufferSource()
+	source.buffer = await session.audioContext.decodeAudioData(session.audioArrBuf)
+
+	// Connect to the final output node (the speakers)
+	source.connect(session.audioContext.destination)
+
+	source.start(0)
+}

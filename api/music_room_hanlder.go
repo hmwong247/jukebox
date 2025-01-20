@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"main/core/corewebsocket"
 	"main/core/playlist"
+	"main/core/ytdlp"
 	"net/http"
 )
 
@@ -42,4 +43,13 @@ func SubmittedtoQueue(w http.ResponseWriter, r *http.Request) {
 	client.Hub.Playlist.Enqueue(node)
 
 	client.Hub.Playlist.Traverse()
+
+	// test
+	audioByteArr, err := ytdlp.CmdStart(pURL)
+	if err != nil {
+		http.Error(w, "", http.StatusBadRequest)
+		return
+	}
+
+	w.Write(audioByteArr)
 }
