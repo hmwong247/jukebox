@@ -1,4 +1,4 @@
-package corewebsocket
+package room
 
 import (
 	"log/slog"

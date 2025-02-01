@@ -2,18 +2,18 @@ package api
 
 import (
 	"log/slog"
-	"main/core/corewebsocket"
+	"main/core/room"
 	"net/http"
 	"time"
 )
 
 // route: /ws?sid=
 func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	corewebsocket.ClientMapMutex.Lock()
-	corewebsocket.TokenMapMutex.Lock()
+	room.ClientMapMutex.Lock()
+	room.TokenMapMutex.Lock()
 	defer func() {
-		corewebsocket.TokenMapMutex.Unlock()
-		corewebsocket.ClientMapMutex.Unlock()
+		room.TokenMapMutex.Unlock()
+		room.ClientMapMutex.Unlock()
 	}()
 
 	sid, err := decodeQueryID(r, "sid")
@@ -24,8 +24,8 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check if client has a connection already
-	if uid, ok := corewebsocket.TokenMap[sid]; ok {
-		if c, ok := corewebsocket.ClientMap[*uid]; ok {
+	if uid, ok := room.TokenMap[sid]; ok {
+		if c, ok := room.ClientMap[*uid]; ok {
 			slog.Info("ws: client has already connected", "uid", c.ID.String())
 			http.Error(w, "", http.StatusForbidden)
 			return
@@ -33,10 +33,10 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// run the websocket hub if it is a new hub
-	if newHub, ok := corewebsocket.NewHubs[sid]; ok {
-		go newHub.Run()
-		delete(corewebsocket.NewHubs, sid)
-	}
+	// if newHub, ok := room.NewHubs[sid]; ok {
+	// 	go newHub.Run()
+	// 	delete(room.NewHubs, sid)
+	// }
 
 	profile, ok := entryProfiles[sid]
 	if !ok {
@@ -44,7 +44,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", http.StatusForbidden)
 		return
 	}
-	hub, ok := corewebsocket.HubMap[profile.rid]
+	hub, ok := room.HubMap[profile.rid]
 	if !ok {
 		slog.Error("ws: hub does not exists", "status", http.StatusInternalServerError)
 		http.Error(w, "", http.StatusInternalServerError)
@@ -52,14 +52,14 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// switch to websocket
-	conn, err := corewebsocket.Upgrader.Upgrade(w, r, nil)
+	conn, err := room.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error("ws upgrade err", "err", err)
 		return
 	}
 
 	// create client
-	client := &corewebsocket.Client{
+	client := &room.Client{
 		Conn:          conn,
 		Hub:           hub,
 		ID:            profile.uid,
@@ -69,17 +69,18 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		Send:          make(chan []byte, 1024),
 		JoinUnixMilli: time.Now().UnixMilli(),
 	}
-	corewebsocket.ClientMap[client.ID] = client
-	corewebsocket.TokenMap[sid] = &client.ID
+	room.ClientMap[client.ID] = client
+	room.TokenMap[sid] = &client.ID
 
 	// broadcast join notification
-	msg := corewebsocket.Message{
+	msg := room.Message{
 		MsgType:  1,
 		UID:      client.ID.String(),
 		Username: client.Name,
 		Data:     "join",
 	}
-	client.Hub.Broadcast <- msg
+	// broadcast before joining, avoid duplicating in client in frontend
+	go client.Hub.BroadcastMsg(msg)
 	client.Hub.Register <- client
 	go client.Read()
 	go client.Write()

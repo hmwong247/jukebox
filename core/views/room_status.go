@@ -1,12 +1,10 @@
 package views
 
-import (
-	"main/core/corewebsocket"
-)
+import "main/core/room"
 
 type RoomStatus struct {
 	RoomID   string
 	Host     string
 	Capacity int
-	UserList map[*corewebsocket.Client]int
+	UserList map[*room.Client]int
 }

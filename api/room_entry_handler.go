@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"log/slog"
-	"main/core/corewebsocket"
+	"main/core/room"
 	"main/core/views"
 	"net/http"
 	"strings"
@@ -82,7 +82,7 @@ func HandleJoin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", http.StatusBadRequest)
 		return
 	}
-	if _, ok := corewebsocket.HubMap[rid]; !ok {
+	if _, ok := room.HubMap[rid]; !ok {
 		slog.Info("hub not found", "rid", rid.String())
 		http.Error(w, "", http.StatusForbidden)
 		return
@@ -94,11 +94,11 @@ func HandleJoin(w http.ResponseWriter, r *http.Request) {
 
 // route: GET /lobby?sid=
 func EnterLobby(w http.ResponseWriter, r *http.Request) {
-	corewebsocket.ClientMapMutex.RLock()
-	corewebsocket.TokenMapMutex.RLock()
+	room.ClientMapMutex.RLock()
+	room.TokenMapMutex.RLock()
 	defer func() {
-		corewebsocket.ClientMapMutex.RUnlock()
-		corewebsocket.TokenMapMutex.RUnlock()
+		room.TokenMapMutex.RUnlock()
+		room.ClientMapMutex.RUnlock()
 	}()
 
 	sid, err := decodeQueryID(r, "sid")
@@ -107,9 +107,9 @@ func EnterLobby(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", http.StatusBadRequest)
 		return
 	}
-	var client *corewebsocket.Client
-	if uid, ok := corewebsocket.TokenMap[sid]; ok {
-		if _client, ok := corewebsocket.ClientMap[*uid]; ok {
+	var client *room.Client
+	if uid, ok := room.TokenMap[sid]; ok {
+		if _client, ok := room.ClientMap[*uid]; ok {
 			client = _client
 		} else {
 			slog.Info("client not found", "status", http.StatusInternalServerError, "uid", _client.ID.String())
@@ -153,8 +153,8 @@ func HandleNewUser(w http.ResponseWriter, r *http.Request) {
 
 // route: "POST /api/session"
 func HandleNewSession(w http.ResponseWriter, r *http.Request) {
-	corewebsocket.ClientMapMutex.RLock()
-	defer corewebsocket.ClientMapMutex.RUnlock()
+	room.ClientMapMutex.RLock()
+	defer room.ClientMapMutex.RUnlock()
 	// return a session id
 	pUsername := r.PostFormValue("cfg_username")
 	pUID := r.PostFormValue("user_id")
@@ -190,8 +190,8 @@ func HandleNewSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// check if client has a connection already
-	if c, ok := corewebsocket.ClientMap[uid]; ok {
+	// check if client has a websocket connection already
+	if c, ok := room.ClientMap[uid]; ok {
 		slog.Info("client has already connected", "endpoint", "POST /api/session", "uid", c.ID.String())
 		http.Error(w, "", http.StatusForbidden)
 		return
@@ -228,7 +228,7 @@ func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", http.StatusForbidden)
 		return
 	}
-	if _, ok := corewebsocket.NewHubs[sid]; ok {
+	if _, ok := room.NewHubs[sid]; ok {
 		slog.Info("already created a new hub for client", "status", http.StatusTooManyRequests, "sid", sid.String())
 		http.Error(w, "", http.StatusTooManyRequests)
 		return
@@ -236,10 +236,11 @@ func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	rid := uuid.New()
 	userProfile.rid = rid
 
-	hub := corewebsocket.CreateHub(rid)
-	corewebsocket.HubMap[rid] = hub
-	corewebsocket.NewHubs[sid] = hub
+	hub := room.CreateHub(rid)
+	room.HubMap[rid] = hub
+	room.NewHubs[sid] = hub
 	// reclaim memory when anything goes wrong
+	go hub.Run()
 	go hub.Timeout(&sid)
 
 	base64RID := base64.RawURLEncoding.EncodeToString(rid[:])
@@ -248,11 +249,11 @@ func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 
 // route: "GET /api/users?sid="
 func UserList(w http.ResponseWriter, r *http.Request) {
-	corewebsocket.ClientMapMutex.RLock()
-	corewebsocket.TokenMapMutex.RLock()
+	room.ClientMapMutex.RLock()
+	room.TokenMapMutex.RLock()
 	defer func() {
-		corewebsocket.TokenMapMutex.RUnlock()
-		corewebsocket.ClientMapMutex.RUnlock()
+		room.TokenMapMutex.RUnlock()
+		room.ClientMapMutex.RUnlock()
 	}()
 
 	sid, err := decodeQueryID(r, "sid")
@@ -261,9 +262,9 @@ func UserList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var client *corewebsocket.Client
-	if uid, ok := corewebsocket.TokenMap[sid]; ok {
-		_client, ok := corewebsocket.ClientMap[*uid]
+	var client *room.Client
+	if uid, ok := room.TokenMap[sid]; ok {
+		_client, ok := room.ClientMap[*uid]
 		if !ok {
 			slog.Info("client not found from sid", "sid", sid.String())
 			http.Error(w, "", http.StatusInternalServerError)
@@ -282,5 +283,11 @@ func UserList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json, err := json.Marshal(userlist)
+	if err != nil {
+		slog.Error("user list json encode error", "err", err)
+		http.Error(w, "", http.StatusInternalServerError)
+		return
+	}
+
 	w.Write(json)
 }

@@ -1,10 +1,9 @@
-package corewebsocket
+package room
 
 import (
 	"encoding/base64"
 	"encoding/json"
 	"log/slog"
-	"main/core/playlist"
 	"math"
 	"sync"
 	"time"
@@ -44,7 +43,7 @@ type Message struct {
 }
 
 type Request struct {
-	Node     *playlist.MusicNode
+	Node     *MusicNode
 	Client   *Client
 	Response chan error
 }
@@ -53,7 +52,7 @@ type Hub struct {
 	ID       uuid.UUID
 	Host     *Client
 	Clients  map[*Client]int // multiple host is allowed
-	Playlist *playlist.Playlist
+	Playlist *Playlist
 
 	// hub control channel
 	Register   chan *Client
@@ -79,7 +78,7 @@ func CreateHub(id uuid.UUID) *Hub {
 		ID:       id,
 		Host:     nil,
 		Clients:  clients,
-		Playlist: playlist.CreatePlaylist(),
+		Playlist: CreatePlaylist(),
 
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),

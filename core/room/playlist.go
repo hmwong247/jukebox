@@ -1,4 +1,4 @@
-package playlist
+package room
 
 import (
 	"container/list"
