@@ -45,19 +45,6 @@ type Client struct {
 	JoinUnixMilli int64
 }
 
-/*
-type 0: debug
-type 1: broadcast
-type 3: send all
-type 5: media control
-*/
-type Message struct {
-	MsgType  int
-	UID      string
-	Username string
-	Data     string
-}
-
 func (c *Client) Read() {
 	defer func() {
 		c.Hub.Unregister <- c
@@ -85,7 +72,7 @@ func (c *Client) Read() {
 			Username: c.Name,
 			Data:     string(msgRead),
 		}
-		c.Hub.Broadcast <- msg
+		go c.Hub.BroadcastMsg(msg)
 	}
 }
 

@@ -28,17 +28,46 @@ var (
 	NewHubs = make(map[uuid.UUID]*Hub)
 )
 
-type Hub struct {
-	ID        uuid.UUID
-	Host      *Client
-	Clients   map[*Client]int // multiple host is allowed
-	Playlist  *playlist.Playlist
-	Broadcast chan Message
+/*
+type 0: debug
+type 1: room event
+type 3: playlist event
+type 5: reserved
+*/
+type Message struct {
+	MsgType  int
+	From     uuid.UUID
+	To       uuid.UUID
+	UID      string
+	Username string
+	Data     interface{} `json:"Data"`
+}
 
-	// control channel
+type Request struct {
+	Node     *playlist.MusicNode
+	Client   *Client
+	Response chan error
+}
+
+type Hub struct {
+	ID       uuid.UUID
+	Host     *Client
+	Clients  map[*Client]int // multiple host is allowed
+	Playlist *playlist.Playlist
+
+	// hub control channel
 	Register   chan *Client
 	Unregister chan *Client
-	Destroy    chan int
+	Destroy    chan struct{}
+
+	// playlist control channel
+	AddSong    chan *Request
+	RemoveSong chan *Request
+	NextSong   chan bool
+
+	// message channel
+	broadcast chan Message
+	direct    chan Message
 }
 
 func CreateHub(id uuid.UUID) *Hub {
@@ -47,23 +76,37 @@ func CreateHub(id uuid.UUID) *Hub {
 	// clients[client] = 7
 
 	return &Hub{
-		ID:         id,
-		Host:       nil,
-		Clients:    clients,
-		Playlist:   playlist.New(),
-		Broadcast:  make(chan Message),
+		ID:       id,
+		Host:     nil,
+		Clients:  clients,
+		Playlist: playlist.CreatePlaylist(),
+
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
-		Destroy:    make(chan int),
+		Destroy:    make(chan struct{}),
+
+		AddSong:    make(chan *Request),
+		RemoveSong: make(chan *Request),
+		NextSong:   make(chan bool),
+
+		broadcast: make(chan Message),
+		direct:    make(chan Message),
 	}
 }
 
 func (h *Hub) Run() {
 	defer func() {
 		// close all channels
-		close(h.Register)
-		close(h.Unregister)
-		close(h.Broadcast)
+		// close(h.Register)
+		// close(h.Unregister)
+		//
+		// close(h.AddSong)
+		// close(h.RemoveSong)
+		// close(h.NextSong)
+		//
+		// close(h.Broadcast)
+		// close(h.DirectMessage)
+		close(h.Destroy)
 		delete(HubMap, h.ID)
 		h.Playlist.Clear()
 	}()
@@ -96,8 +139,8 @@ func (h *Hub) Run() {
 				close(client.Send)
 				// check if hub should be closed
 				if len(h.Clients) == 0 {
-					idStr := base64.RawURLEncoding.EncodeToString(h.ID[:])
-					slog.Debug("ws hub closed: no client in hub", "id", idStr)
+					base64rid := base64.RawURLEncoding.EncodeToString(h.ID[:])
+					slog.Debug("ws hub closed: no client in hub", "id", base64rid)
 
 					// unlock mutex
 					TokenMapMutex.Unlock()
@@ -120,7 +163,15 @@ func (h *Hub) Run() {
 			// unlock mutex
 			TokenMapMutex.Unlock()
 			ClientMapMutex.Unlock()
-		case msg := <-h.Broadcast:
+		case req := <-h.AddSong:
+			if err := h.Playlist.Enqueue(req.Node); err != nil {
+				req.Response <- err
+			} else {
+				// debug log
+				h.Playlist.Traverse()
+				req.Response <- nil
+			}
+		case msg := <-h.broadcast:
 			msgJson, err := json.Marshal(msg)
 			if err != nil {
 				slog.Error("json err", "err", err)
@@ -136,7 +187,6 @@ func (h *Hub) Run() {
 			}
 		case cmd := <-h.Destroy:
 			slog.Debug("hub received c4", "cmd", cmd)
-			close(h.Destroy)
 			return
 		}
 	}
@@ -146,14 +196,22 @@ func (h *Hub) Timeout(sid *uuid.UUID) {
 	select {
 	case <-time.After(5 * time.Second):
 		// close the hub if no one joined after some time
-		rid := base64.RawURLEncoding.EncodeToString(h.ID[:])
+		base64rid := base64.RawURLEncoding.EncodeToString(h.ID[:])
+		delete(NewHubs, *sid)
 		if len(h.Clients) == 0 {
-			slog.Debug("auto close", "rid", rid)
-			delete(NewHubs, *sid)
-			h.Destroy <- 0
+			slog.Debug("auto close", "rid", base64rid)
+			select {
+			case <-h.Destroy:
+				// closed
+				slog.Debug("timeout destroy closed")
+				return
+			default:
+			}
+			h.Destroy <- struct{}{}
+			slog.Debug("timeout not blocking")
 			return
 		} else {
-			slog.Debug("keep running", "rid", rid)
+			slog.Debug("keep running", "rid", base64rid)
 			return
 		}
 	}
@@ -177,9 +235,17 @@ func (h *Hub) NextHost() *Client {
 
 func (h *Hub) BroadcastMsg(msg Message) {
 	// wrap by goroutine to avoid deadlock
-	if len(h.Clients) < 1 {
+	slog.Debug("broadcast start")
+	if len(h.Clients) > 0 {
+		select {
+		case <-h.Destroy:
+			slog.Debug("broadcast destroy closed")
+			return
+		default:
+		}
+		h.broadcast <- msg
+		slog.Debug("broadcast not blocking")
 		return
 	}
-	h.Broadcast <- msg
-
+	slog.Debug("broadcast no client")
 }

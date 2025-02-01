@@ -38,7 +38,7 @@ func main() {
 	mux.HandleFunc("POST /api/session", api.HandleNewSession)
 	mux.HandleFunc("GET /api/create", api.HandleCreateRoom)
 	mux.HandleFunc("GET /api/users", api.UserList)
-	mux.HandleFunc("POST /api/enqueue", api.SubmittedtoQueue)
+	mux.HandleFunc("POST /api/enqueue", api.EnqueueURL)
 
 	// WebSocket
 	mux.HandleFunc("/ws", api.HandleWebSocket)
