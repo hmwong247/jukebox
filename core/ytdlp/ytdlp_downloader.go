@@ -23,7 +23,6 @@ var (
 )
 
 type InfoJson struct {
-	ID        int
 	FullTitle string
 	Uploader  string
 	Thumbnail string

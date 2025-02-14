@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
 
 	"main/api"
+	"main/core/ytdlp"
 )
 
 func main() {
@@ -16,6 +18,14 @@ func main() {
 	slogger := slog.New(slog.NewTextHandler(os.Stdout, logOpt))
 	slog.SetDefault(slogger)
 	slog.Info("start")
+
+	// maybe cancellable?
+	dlpctx, cancel := context.WithCancel(context.Background())
+	_ = cancel
+	jsonctx := context.WithValue(dlpctx, "name", "json downloader")
+	audioctx := context.WithValue(dlpctx, "name", "audio downloader")
+	go ytdlp.JsonDownloader.Run(jsonctx)
+	go ytdlp.AudioDownloader.Run(audioctx)
 
 	mux := http.NewServeMux()
 

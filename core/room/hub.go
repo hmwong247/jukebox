@@ -1,14 +1,21 @@
 package room
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"log/slog"
+	"main/core/mq"
+	"main/core/ytdlp"
 	"math"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+)
+
+const (
+	HUB_TIMEOUT = 10
 )
 
 var (
@@ -42,17 +49,28 @@ type Message struct {
 	Data     interface{} `json:"Data"`
 }
 
-type Request struct {
-	Node     *MusicNode
+type AddRequest struct {
+	// Node     *MusicNode
 	Client   *Client
+	URL      string
+	Response chan error
+}
+
+type DelRequest struct {
+	// Node     *MusicNode
+	Client   *Client
+	NodeID   int
 	Response chan error
 }
 
 type Hub struct {
-	ID       uuid.UUID
-	Host     *Client
-	Clients  map[*Client]int // multiple host is allowed
-	Playlist *Playlist
+	ID        uuid.UUID
+	hubctx    context.Context
+	hubcancel func()
+	Host      *Client
+	Clients   map[*Client]int // multiple host is allowed
+	Playlist  *Playlist
+	MQ        *mq.WorkerPool
 
 	// hub control channel
 	Register   chan *Client
@@ -60,9 +78,9 @@ type Hub struct {
 	Destroy    chan struct{}
 
 	// playlist control channel
-	AddSong    chan *Request
-	RemoveSong chan *Request
-	NextSong   chan bool
+	AddSong    chan *AddRequest
+	RemoveSong chan *DelRequest
+	NextSong   chan struct{}
 
 	// message channel
 	broadcast chan Message
@@ -71,6 +89,13 @@ type Hub struct {
 
 func CreateHub(id uuid.UUID) *Hub {
 	clients := make(map[*Client]int)
+	playlist := CreatePlaylist()
+	mq, err := mq.NewWorkerPool(1, 4)
+	if err != nil {
+		slog.Error("task queue err", "err", err)
+		return &Hub{}
+	}
+
 	// // the first client is the host by default
 	// clients[client] = 7
 
@@ -78,15 +103,16 @@ func CreateHub(id uuid.UUID) *Hub {
 		ID:       id,
 		Host:     nil,
 		Clients:  clients,
-		Playlist: CreatePlaylist(),
+		Playlist: playlist,
+		MQ:       mq,
 
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
 		Destroy:    make(chan struct{}),
 
-		AddSong:    make(chan *Request),
-		RemoveSong: make(chan *Request),
-		NextSong:   make(chan bool),
+		AddSong:    make(chan *AddRequest),
+		RemoveSong: make(chan *DelRequest),
+		NextSong:   make(chan struct{}),
 
 		broadcast: make(chan Message),
 		direct:    make(chan Message),
@@ -108,7 +134,15 @@ func (h *Hub) Run() {
 		close(h.Destroy)
 		delete(HubMap, h.ID)
 		h.Playlist.Clear()
+		h.hubcancel()
 	}()
+	// start mq
+	hubctx, hubshutdown := context.WithCancel(context.Background())
+	mqctx := context.WithValue(hubctx, "name", h.ID.String())
+	h.hubctx = hubctx
+	h.hubcancel = func() { hubshutdown() }
+	go h.MQ.Run(mqctx)
+
 	for {
 		select {
 		case client := <-h.Register:
@@ -162,14 +196,6 @@ func (h *Hub) Run() {
 			// unlock mutex
 			TokenMapMutex.Unlock()
 			ClientMapMutex.Unlock()
-		case req := <-h.AddSong:
-			if err := h.Playlist.Enqueue(req.Node); err != nil {
-				req.Response <- err
-			} else {
-				// debug log
-				h.Playlist.Traverse()
-				req.Response <- nil
-			}
 		case msg := <-h.broadcast:
 			msgJson, err := json.Marshal(msg)
 			if err != nil {
@@ -187,13 +213,27 @@ func (h *Hub) Run() {
 		case cmd := <-h.Destroy:
 			slog.Debug("hub received c4", "cmd", cmd)
 			return
+		case req := <-h.AddSong:
+			node := MusicNode{
+				URL: req.URL,
+			}
+			if err := h.Playlist.Enqueue(&node); err != nil {
+				// response with error
+				req.Response <- err
+			} else {
+				// debug log
+				h.Playlist.Traverse()
+				req.Response <- nil
+				// forward to worker
+				// h.Worker.addSong <- req
+			}
 		}
 	}
 }
 
 func (h *Hub) Timeout(sid *uuid.UUID) {
 	select {
-	case <-time.After(5 * time.Second):
+	case <-time.After(HUB_TIMEOUT * time.Second):
 		// close the hub if no one joined after some time
 		base64rid := base64.RawURLEncoding.EncodeToString(h.ID[:])
 		delete(NewHubs, *sid)
@@ -247,4 +287,37 @@ func (h *Hub) BroadcastMsg(msg Message) {
 		return
 	}
 	slog.Debug("broadcast no client")
+}
+
+func fetchInfoJson(node *MusicNode, client *Client) {
+	// audioByteArr, err := ytdlp.CmdStart(pURL)
+	// if err != nil {
+	// 	http.Error(w, "", http.StatusBadRequest)
+	// 	return
+	// }
+	// byteReader := bytes.NewReader(audioByteArr)
+	// w.Write(audioByteArr)
+	// http.ServeContent(w, r, "", time.Time{}, byteReader)
+
+	infoJson, err := ytdlp.DownloadInfoJson(node.URL)
+	if err != nil {
+		slog.Error("info json err", "err", err)
+		msg := Message{
+			MsgType: 3,
+			To:      client.ID,
+			Data:    "failed",
+		}
+		go client.Hub.BroadcastMsg(msg)
+		return
+	}
+	// infoJson.ID = node.ID
+	node.InfoJson = infoJson
+
+	msg := Message{
+		MsgType:  3,
+		UID:      client.ID.String(),
+		Username: client.Name,
+		Data:     infoJson,
+	}
+	go client.Hub.BroadcastMsg(msg)
 }

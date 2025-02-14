@@ -1,22 +1,16 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"main/core/room"
 	"main/core/ytdlp"
 	"net/http"
-	"strconv"
+	"time"
 )
 
 // route: "POST /api/enqueue"
 func EnqueueURL(w http.ResponseWriter, r *http.Request) {
-	// corewebsocket.ClientMapMutex.RLock()
-	// corewebsocket.TokenMapMutex.RLock()
-	// defer func() {
-	// 	corewebsocket.TokenMapMutex.RUnlock()
-	// 	corewebsocket.ClientMapMutex.RUnlock()
-	// }()
-
 	sid, err := decodeQueryID(r, "sid")
 	if err != nil {
 		http.Error(w, "", http.StatusBadRequest)
@@ -46,55 +40,86 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 	room.ClientMapMutex.RUnlock()
 
 	// enqueue
-	node := room.MusicNode{URL: pURL}
-	enqueueRes := room.Request{
-		Node:     &node,
-		Client:   client,
-		Response: make(chan error),
-	}
-	client.Hub.AddSong <- &enqueueRes
-	err = <-enqueueRes.Response
-	if err != nil {
-		slog.Info("playlist enqueue error", "err", err)
-		http.Error(w, "", http.StatusTooManyRequests)
-		return
-	}
-	// response 200 ok just to tell the client that the server has recieved
-	// the request which is being processed, the result will be sent with websocket
-	w.Write([]byte(strconv.Itoa(node.ID)))
-
-	go fetchInfoJson(&node, client)
-}
-
-func fetchInfoJson(node *room.MusicNode, client *room.Client) {
-	// audioByteArr, err := ytdlp.CmdStart(pURL)
+	// node := room.MusicNode{URL: pURL}
+	// enqueueRes := room.AddRequest{
+	// 	URL:      pURL,
+	// 	Client:   client,
+	// 	Response: make(chan error),
+	// }
+	// client.Hub.AddSong <- &enqueueRes
+	// err = <-enqueueRes.Response
 	// if err != nil {
-	// 	http.Error(w, "", http.StatusBadRequest)
+	// 	slog.Info("playlist enqueue error", "err", err)
+	// 	http.Error(w, "", http.StatusTooManyRequests)
 	// 	return
 	// }
-	// byteReader := bytes.NewReader(audioByteArr)
-	// w.Write(audioByteArr)
-	// http.ServeContent(w, r, "", time.Time{}, byteReader)
+	// response 200 ok just to tell the client that the server has recieved
+	// the request which is being processed, the result will be sent with websocket
 
-	infoJson, err := ytdlp.DownloadInfoJson(node.URL)
-	if err != nil {
-		slog.Error("info json err", "err", err)
-		msg := room.Message{
-			MsgType: 3,
-			To:      client.ID,
-			Data:    "failed",
+	req := &ytdlp.RequestJson{
+		URL:      pURL,
+		Response: make(chan any),
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	go func() {
+		defer cancel()
+
+		// mq response
+		select {
+		case <-ctx.Done():
+			slog.Debug("mq response ctx done")
+			return
+		case res := <-req.Response:
+			if status, ok := res.(int); ok {
+				w.WriteHeader(status)
+			} else {
+				http.Error(w, "", http.StatusInternalServerError)
+				return
+			}
 		}
-		go client.Hub.BroadcastMsg(msg)
-		return
-	}
-	infoJson.ID = node.ID
-	node.InfoJson = infoJson
 
-	msg := room.Message{
-		MsgType:  3,
-		UID:      client.ID.String(),
-		Username: client.Name,
-		Data:     infoJson,
-	}
-	go client.Hub.BroadcastMsg(msg)
+		// json response
+		select {
+		case <-ctx.Done():
+			slog.Debug("json response ctx done")
+			return
+		case res := <-req.Response:
+			if json, ok := res.(ytdlp.InfoJson); ok {
+				msg := room.Message{
+					MsgType:  3,
+					UID:      client.ID.String(),
+					Username: client.Name,
+					Data:     json,
+				}
+				go client.Hub.BroadcastMsg(msg)
+
+				// enqueue playlist
+				node := room.MusicNode{
+					InfoJson: json,
+				}
+				if err := client.Hub.Playlist.Enqueue(&node); err != nil {
+					slog.Error("enqueue err", "err", err)
+					return
+				} else {
+					client.Hub.Playlist.Traverse()
+				}
+			} else if err, ok := res.(error); ok {
+				slog.Error("info json err", "err", err)
+				msg := room.Message{
+					MsgType: 3,
+					To:      client.ID,
+					Data:    "failed",
+				}
+				go client.Hub.BroadcastMsg(msg)
+				return
+			} else {
+				http.Error(w, "", http.StatusInternalServerError)
+				return
+			}
+		}
+	}()
+	ytdlp.JsonDownloader.Submit(ctx, req)
+
+	// w.Write([]byte(strconv.Itoa(node.ID)))
+	// go fetchInfoJson(&node, client)
 }
