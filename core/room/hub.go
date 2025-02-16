@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	HUB_TIMEOUT = 10
+	TIMEOUT_HUB = 10 * time.Second
 )
 
 var (
@@ -34,6 +34,18 @@ var (
 	NewHubs = make(map[uuid.UUID]*Hub)
 )
 
+type MsgType int
+
+const (
+	DEBUG MsgType = iota
+	_
+	ROOM_EVENT
+	_
+	PLAYLIST_EVENT
+	_
+	RESERVED
+)
+
 /*
 type 0: debug
 type 1: room event
@@ -41,26 +53,12 @@ type 3: playlist event
 type 5: reserved
 */
 type Message struct {
-	MsgType  int
+	MsgType  MsgType
 	From     uuid.UUID
 	To       uuid.UUID
 	UID      string
 	Username string
 	Data     interface{} `json:"Data"`
-}
-
-type AddRequest struct {
-	// Node     *MusicNode
-	Client   *Client
-	URL      string
-	Response chan error
-}
-
-type DelRequest struct {
-	// Node     *MusicNode
-	Client   *Client
-	NodeID   int
-	Response chan error
 }
 
 type Hub struct {
@@ -70,7 +68,7 @@ type Hub struct {
 	Host      *Client
 	Clients   map[*Client]int // multiple host is allowed
 	Playlist  *Playlist
-	MQ        *mq.WorkerPool
+	Player    *mq.WorkerPool
 
 	// hub control channel
 	Register   chan *Client
@@ -78,9 +76,8 @@ type Hub struct {
 	Destroy    chan struct{}
 
 	// playlist control channel
-	AddSong    chan *AddRequest
-	RemoveSong chan *DelRequest
-	NextSong   chan struct{}
+	AddedSong chan struct{}
+	NextSong  chan struct{}
 
 	// message channel
 	broadcast chan Message
@@ -90,7 +87,7 @@ type Hub struct {
 func CreateHub(id uuid.UUID) *Hub {
 	clients := make(map[*Client]int)
 	playlist := CreatePlaylist()
-	mq, err := mq.NewWorkerPool(1, 4)
+	mq, err := mq.NewWorkerPool(1, 1)
 	if err != nil {
 		slog.Error("task queue err", "err", err)
 		return &Hub{}
@@ -104,15 +101,14 @@ func CreateHub(id uuid.UUID) *Hub {
 		Host:     nil,
 		Clients:  clients,
 		Playlist: playlist,
-		MQ:       mq,
+		Player:   mq,
 
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
 		Destroy:    make(chan struct{}),
 
-		AddSong:    make(chan *AddRequest),
-		RemoveSong: make(chan *DelRequest),
-		NextSong:   make(chan struct{}),
+		AddedSong: make(chan struct{}),
+		NextSong:  make(chan struct{}),
 
 		broadcast: make(chan Message),
 		direct:    make(chan Message),
@@ -121,16 +117,6 @@ func CreateHub(id uuid.UUID) *Hub {
 
 func (h *Hub) Run() {
 	defer func() {
-		// close all channels
-		// close(h.Register)
-		// close(h.Unregister)
-		//
-		// close(h.AddSong)
-		// close(h.RemoveSong)
-		// close(h.NextSong)
-		//
-		// close(h.Broadcast)
-		// close(h.DirectMessage)
 		close(h.Destroy)
 		delete(HubMap, h.ID)
 		h.Playlist.Clear()
@@ -140,8 +126,8 @@ func (h *Hub) Run() {
 	hubctx, hubshutdown := context.WithCancel(context.Background())
 	mqctx := context.WithValue(hubctx, "name", h.ID.String())
 	h.hubctx = hubctx
-	h.hubcancel = func() { hubshutdown() }
-	go h.MQ.Run(mqctx)
+	h.hubcancel = hubshutdown
+	go h.Player.Run(mqctx)
 
 	for {
 		select {
@@ -213,44 +199,82 @@ func (h *Hub) Run() {
 		case cmd := <-h.Destroy:
 			slog.Debug("hub received c4", "cmd", cmd)
 			return
-		case req := <-h.AddSong:
-			node := MusicNode{
-				URL: req.URL,
-			}
-			if err := h.Playlist.Enqueue(&node); err != nil {
-				// response with error
-				req.Response <- err
-			} else {
-				// debug log
-				h.Playlist.Traverse()
-				req.Response <- nil
-				// forward to worker
-				// h.Worker.addSong <- req
-			}
+		case <-h.AddedSong:
+			slog.Debug("hub check playlist")
+			go h.enqueuedPlaylist()
 		}
 	}
 }
 
+func (h *Hub) enqueuedPlaylist() {
+	ctx, cancel := context.WithTimeout(context.Background(), ytdlp.TIMEOUT_AUDIO)
+	node, err := h.Playlist.Dequeue()
+	if err != nil {
+		slog.Error("hub dequeue err", "err", err)
+	}
+	req := ytdlp.RequestAudio{
+		Ctx:      ctx,
+		URL:      node.URL,
+		Response: make(chan any),
+	}
+
+	go func() {
+		defer cancel()
+
+		// mq response
+		select {
+		case <-ctx.Done():
+			slog.Debug("[hub] request audio done")
+			return
+		case res := <-req.Response:
+			if accepted, ok := res.(bool); ok {
+				slog.Debug("[hub] status", "status", accepted)
+				if !accepted {
+					return
+				}
+			}
+		}
+
+		// audio byte response
+		select {
+		case <-ctx.Done():
+			slog.Debug("[hub] request audio done")
+			return
+		case res := <-req.Response:
+			if audioBytes, ok := res.([]byte); ok {
+				slog.Debug("wtf1")
+				msg := Message{
+					MsgType: DEBUG,
+					Data:    audioBytes,
+				}
+				h.BroadcastMsg(msg)
+				slog.Debug("wtf2")
+			}
+		}
+	}()
+	ytdlp.AudioDownloader.Submit(ctx, &req)
+}
+
 func (h *Hub) Timeout(sid *uuid.UUID) {
 	select {
-	case <-time.After(HUB_TIMEOUT * time.Second):
+	case <-time.After(TIMEOUT_HUB):
 		// close the hub if no one joined after some time
 		base64rid := base64.RawURLEncoding.EncodeToString(h.ID[:])
 		delete(NewHubs, *sid)
 		if len(h.Clients) == 0 {
-			slog.Debug("auto close", "rid", base64rid)
+			slog.Debug("hub auto close", "rid", base64rid)
 			select {
 			case <-h.Destroy:
 				// closed
-				slog.Debug("timeout destroy closed")
+				// slog.Debug("timeout destroy closed")
 				return
 			default:
 			}
 			h.Destroy <- struct{}{}
-			slog.Debug("timeout not blocking")
+			// slog.Debug("timeout not blocking")
 			return
 		} else {
-			slog.Debug("keep running", "rid", base64rid)
+			// slog.Debug("keep running", "rid", base64rid)
 			return
 		}
 	}
@@ -274,50 +298,17 @@ func (h *Hub) NextHost() *Client {
 
 func (h *Hub) BroadcastMsg(msg Message) {
 	// wrap by goroutine to avoid deadlock
-	slog.Debug("broadcast start")
+	// slog.Debug("broadcast start")
 	if len(h.Clients) > 0 {
 		select {
 		case <-h.Destroy:
-			slog.Debug("broadcast destroy closed")
+			// slog.Debug("broadcast destroy closed")
 			return
 		default:
 		}
 		h.broadcast <- msg
-		slog.Debug("broadcast not blocking")
+		// slog.Debug("broadcast not blocking")
 		return
 	}
-	slog.Debug("broadcast no client")
-}
-
-func fetchInfoJson(node *MusicNode, client *Client) {
-	// audioByteArr, err := ytdlp.CmdStart(pURL)
-	// if err != nil {
-	// 	http.Error(w, "", http.StatusBadRequest)
-	// 	return
-	// }
-	// byteReader := bytes.NewReader(audioByteArr)
-	// w.Write(audioByteArr)
-	// http.ServeContent(w, r, "", time.Time{}, byteReader)
-
-	infoJson, err := ytdlp.DownloadInfoJson(node.URL)
-	if err != nil {
-		slog.Error("info json err", "err", err)
-		msg := Message{
-			MsgType: 3,
-			To:      client.ID,
-			Data:    "failed",
-		}
-		go client.Hub.BroadcastMsg(msg)
-		return
-	}
-	// infoJson.ID = node.ID
-	node.InfoJson = infoJson
-
-	msg := Message{
-		MsgType:  3,
-		UID:      client.ID.String(),
-		Username: client.Name,
-		Data:     infoJson,
-	}
-	go client.Hub.BroadcastMsg(msg)
+	// slog.Debug("broadcast no client")
 }

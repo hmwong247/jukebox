@@ -139,11 +139,10 @@ func DownloadInfoJson(rawURL string) (InfoJson, error) {
 
 	infoJson := InfoJson{}
 	if err := json.Unmarshal(jsonBytes, &infoJson); err != nil {
-		slog.Debug("jsontest error", "err", err)
+		slog.Debug("json unmarshal err", "err", err)
 		return InfoJson{}, err
 	}
-	slog.Debug("infoJson", "json", infoJson)
+	// slog.Debug("infoJson", "json", infoJson)
 
 	return infoJson, nil
-	// return []byte("ok"), nil
 }

@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	API_ENTRY_TIMEOUT = 5 * time.Second
+	TIMEOUT_API_ENTRY = 10 * time.Second
 )
 
 var (
@@ -38,10 +38,10 @@ type UserProfile struct {
 
 func (userProfile *UserProfile) timeout() {
 	select {
-	case <-time.After(API_ENTRY_TIMEOUT):
+	case <-time.After(TIMEOUT_API_ENTRY):
 		delete(entryProfiles, userProfile.sid)
 		delete(entryToken, userProfile.uid)
-		slog.Debug("delete user profile")
+		// slog.Debug("delete user profile")
 		return
 	}
 }
@@ -147,7 +147,7 @@ func HandleNewUser(w http.ResponseWriter, r *http.Request) {
 	userID := uuid.New()
 	userIDByte := userID[:]
 	encodedBase64 := base64.RawURLEncoding.EncodeToString(userIDByte)
-	slog.Debug("GET /new-user", "base64", encodedBase64)
+	// slog.Debug("GET /new-user", "base64", encodedBase64)
 	w.Write([]byte(encodedBase64))
 }
 

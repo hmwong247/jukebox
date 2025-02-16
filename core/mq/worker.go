@@ -9,7 +9,7 @@ import (
 type Task interface {
 	Accepted(context.Context)
 	Rejected(context.Context)
-	Process()
+	Process(context.Context)
 
 	// std interface
 	fmt.Stringer
@@ -39,8 +39,7 @@ func (w *Worker) Start(ctx context.Context) {
 			// join the pool when available
 			// wait for task
 			task := <-w.taskq
-			task.Process()
+			task.Process(ctx)
 		}
 	}
 }
-

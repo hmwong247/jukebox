@@ -6,8 +6,14 @@ import (
 	"main/core/room"
 	"main/core/ytdlp"
 	"net/http"
-	"time"
+	"strings"
+	"sync"
 )
+
+type wsInfoJson struct {
+	ID int
+	ytdlp.InfoJson
+}
 
 // route: "POST /api/enqueue"
 func EnqueueURL(w http.ResponseWriter, r *http.Request) {
@@ -17,7 +23,11 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pURL := r.PostFormValue("post_url")
+	pURL := strings.TrimSpace(r.PostFormValue("post_url"))
+	if len(pURL) == 0 {
+		http.Error(w, "", http.StatusBadRequest)
+		return
+	}
 
 	// find user
 	room.ClientMapMutex.RLock()
@@ -39,86 +49,89 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 	room.TokenMapMutex.RUnlock()
 	room.ClientMapMutex.RUnlock()
 
-	// enqueue
-	// node := room.MusicNode{URL: pURL}
-	// enqueueRes := room.AddRequest{
-	// 	URL:      pURL,
-	// 	Client:   client,
-	// 	Response: make(chan error),
-	// }
-	// client.Hub.AddSong <- &enqueueRes
-	// err = <-enqueueRes.Response
-	// if err != nil {
-	// 	slog.Info("playlist enqueue error", "err", err)
-	// 	http.Error(w, "", http.StatusTooManyRequests)
-	// 	return
-	// }
-	// response 200 ok just to tell the client that the server has recieved
+	// respond 202 just to tell the client that the server has recieved
 	// the request which is being processed, the result will be sent with websocket
-
-	req := &ytdlp.RequestJson{
+	ctx, cancel := context.WithTimeout(context.Background(), ytdlp.TIMEOUT_JSON)
+	req := ytdlp.RequestJson{
+		Ctx:      ctx,
 		URL:      pURL,
 		Response: make(chan any),
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		defer cancel()
 
-		// mq response
+		// http: mq response
 		select {
 		case <-ctx.Done():
-			slog.Debug("mq response ctx done")
+			w.WriteHeader(http.StatusRequestTimeout)
+			slog.Debug("[api] mq response ctx done")
 			return
 		case res := <-req.Response:
 			if status, ok := res.(int); ok {
 				w.WriteHeader(status)
 			} else {
 				http.Error(w, "", http.StatusInternalServerError)
+				slog.Debug("[api] mq response err, failed to cast int")
 				return
 			}
 		}
 
-		// json response
+		// websocket: json response
 		select {
 		case <-ctx.Done():
 			slog.Debug("json response ctx done")
+			msg := room.Message{
+				MsgType: 3,
+				To:      client.ID,
+				Data:    "timeout",
+			}
+			client.Hub.BroadcastMsg(msg)
 			return
 		case res := <-req.Response:
 			if json, ok := res.(ytdlp.InfoJson); ok {
-				msg := room.Message{
-					MsgType:  3,
-					UID:      client.ID.String(),
-					Username: client.Name,
-					Data:     json,
-				}
-				go client.Hub.BroadcastMsg(msg)
-
 				// enqueue playlist
 				node := room.MusicNode{
+					URL:      pURL,
 					InfoJson: json,
 				}
 				if err := client.Hub.Playlist.Enqueue(&node); err != nil {
-					slog.Error("enqueue err", "err", err)
+					slog.Error("[api] enqueue err", "err", err)
 					return
 				} else {
 					client.Hub.Playlist.Traverse()
 				}
+				// broadcast json to websocket
+				wsInfoJson := wsInfoJson{
+					ID:       node.ID,
+					InfoJson: json,
+				}
+				msg := room.Message{
+					MsgType:  3,
+					UID:      client.ID.String(),
+					Username: client.Name,
+					Data:     wsInfoJson,
+				}
+				client.Hub.BroadcastMsg(msg)
+
+				// notify hub
+				client.Hub.AddedSong <- struct{}{}
 			} else if err, ok := res.(error); ok {
-				slog.Error("info json err", "err", err)
+				slog.Error("[api] info json err", "err", err)
 				msg := room.Message{
 					MsgType: 3,
 					To:      client.ID,
 					Data:    "failed",
 				}
-				go client.Hub.BroadcastMsg(msg)
-				return
-			} else {
-				http.Error(w, "", http.StatusInternalServerError)
+				client.Hub.BroadcastMsg(msg)
 				return
 			}
 		}
 	}()
-	ytdlp.JsonDownloader.Submit(ctx, req)
+	ytdlp.JsonDownloader.Submit(ctx, &req)
+	wg.Wait()
 
 	// w.Write([]byte(strconv.Itoa(node.ID)))
 	// go fetchInfoJson(&node, client)
