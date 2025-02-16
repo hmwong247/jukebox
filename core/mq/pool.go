@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"sync"
 )
 
@@ -83,17 +84,19 @@ func (wp *WorkerPool) Run(ctx context.Context) {
 	}
 }
 
-func (wp *WorkerPool) Submit(ctx context.Context, t Task) {
+func (wp *WorkerPool) Submit(ctx context.Context, t Task) int {
 	select {
 	case <-ctx.Done():
 		slog.Info("submit cancelled", "ctx", ctx.Err())
-		return
+		return http.StatusRequestTimeout
 	case wp.taskq <- t:
 		// signal to the caller
-		t.Accepted(ctx)
+		// t.Accepted(ctx)
 		// slog.Debug("submit ok")
+		return http.StatusAccepted
 	default:
-		t.Rejected(ctx)
+		// t.Rejected(ctx)
 		// slog.Debug("submit err task queue is full", "task", t)
+		return http.StatusTooManyRequests
 	}
 }

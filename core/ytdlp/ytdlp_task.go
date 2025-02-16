@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"main/core/mq"
-	"net/http"
 	"time"
 )
 
@@ -20,52 +19,31 @@ var (
 
 type RequestJson struct {
 	Ctx      context.Context
+	ErrCh    chan error
+	FinCh    chan struct{}
 	URL      string
-	Response chan any
-}
-
-func (r *RequestJson) Accepted(workerctx context.Context) {
-	select {
-	case <-workerctx.Done():
-		r.Response <- workerctx.Err()
-		return
-	default:
-		if workerctx.Err() == nil && r.Ctx.Err() == nil {
-			r.Response <- http.StatusAccepted
-		}
-	}
-}
-
-func (r *RequestJson) Rejected(workerctx context.Context) {
-	select {
-	case <-workerctx.Done():
-		r.Response <- workerctx.Err()
-		return
-	default:
-		if workerctx.Err() == nil && r.Ctx.Err() == nil {
-			r.Response <- http.StatusTooManyRequests
-		}
-	}
+	Response InfoJson
 }
 
 func (r *RequestJson) Process(workerctx context.Context) {
 	select {
 	case <-workerctx.Done():
-		r.Response <- workerctx.Err()
+		r.ErrCh <- workerctx.Err()
 		return
 	case <-r.Ctx.Done():
-		r.Response <- r.Ctx.Err()
+		r.ErrCh <- r.Ctx.Err()
 		return
 	default:
 		json, err := DownloadInfoJson(r.URL)
 		if err != nil {
 			slog.Info("[task] failed to fetch infojson", "err", err)
-			r.Response <- err
+			r.ErrCh <- err
 			return
 		}
 
 		if workerctx.Err() == nil && r.Ctx.Err() == nil {
-			r.Response <- json
+			r.Response = json
+			r.FinCh <- struct{}{}
 		}
 	}
 }
@@ -76,52 +54,31 @@ func (r *RequestJson) String() string {
 
 type RequestAudio struct {
 	Ctx      context.Context
+	ErrCh    chan error
+	FinCh    chan struct{}
 	URL      string
-	Response chan any
-}
-
-func (r *RequestAudio) Accepted(workerctx context.Context) {
-	select {
-	case <-workerctx.Done():
-		r.Response <- workerctx.Err()
-		return
-	default:
-		if workerctx.Err() == nil && r.Ctx.Err() == nil {
-			r.Response <- true
-		}
-	}
-}
-
-func (r *RequestAudio) Rejected(workerctx context.Context) {
-	select {
-	case <-workerctx.Done():
-		r.Response <- workerctx.Err()
-		return
-	default:
-		if workerctx.Err() == nil && r.Ctx.Err() == nil {
-			r.Response <- false
-		}
-	}
+	Response []byte
 }
 
 func (r *RequestAudio) Process(workerctx context.Context) {
 	select {
 	case <-workerctx.Done():
-		r.Response <- workerctx.Err()
+		r.ErrCh <- workerctx.Err()
 		return
 	case <-r.Ctx.Done():
-		r.Response <- r.Ctx.Err()
+		r.ErrCh <- r.Ctx.Err()
 		return
 	default:
 		audioBytes, err := DownloadAudio(r.URL)
 		if err != nil {
 			slog.Info("[task] failed to fetch infojson", "err", err)
-			r.Response <- err
+			r.ErrCh <- err
 			return
 		}
 
 		if workerctx.Err() == nil && r.Ctx.Err() == nil {
-			r.Response <- audioBytes
+			r.Response = audioBytes
+			r.FinCh <- struct{}{}
 		}
 	}
 }

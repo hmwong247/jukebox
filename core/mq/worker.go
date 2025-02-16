@@ -7,8 +7,6 @@ import (
 )
 
 type Task interface {
-	Accepted(context.Context)
-	Rejected(context.Context)
 	Process(context.Context)
 
 	// std interface

@@ -201,6 +201,7 @@ async function requestJoinRoom(event, form) {
 }
 
 async function submitURL(event, form) {
+	event.preventDefault()
 	formData = new FormData(form)
 	formData.append("user_id", window.localStorage.getItem("userID"))
 
@@ -209,11 +210,9 @@ async function submitURL(event, form) {
 		body: formData
 	}).then((res) => {
 		if (res.ok) {
-			res.arrayBuffer().then(data => {
-				session.audioArrBuf = data
-			})
+			console.log(res.status)
 		} else {
-			throw new Error(`submitURL, err:${res.statusText}`)
+			console.log(res.status)
 		}
 	}).catch(err => {
 		throw err

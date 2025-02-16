@@ -8,6 +8,7 @@ import (
 	"main/core/mq"
 	"main/core/ytdlp"
 	"math"
+	"net/http"
 	"sync"
 	"time"
 
@@ -38,17 +39,16 @@ type MsgType int
 
 const (
 	DEBUG MsgType = iota
+	EVENT_ROOM_ENTRY
 	_
-	ROOM_EVENT
-	_
-	PLAYLIST_EVENT
+	EVENT_PLAYLIST
 	_
 	RESERVED
 )
 
 /*
 type 0: debug
-type 1: room event
+type 1: room entry event
 type 3: playlist event
 type 5: reserved
 */
@@ -144,7 +144,7 @@ func (h *Hub) Run() {
 			if _, ok := h.Clients[client]; ok {
 				// broadcast leave notification
 				msg := Message{
-					MsgType:  1,
+					MsgType:  EVENT_ROOM_ENTRY,
 					UID:      client.ID.String(),
 					Username: client.Name,
 					Data:     "left",
@@ -170,7 +170,7 @@ func (h *Hub) Run() {
 					if h.Host.ID == client.ID {
 						h.Host = h.NextHost()
 						msg := Message{
-							MsgType:  1,
+							MsgType:  EVENT_ROOM_ENTRY,
 							UID:      h.Host.ID.String(),
 							Username: h.Host.Name,
 							Data:     "host",
@@ -187,7 +187,9 @@ func (h *Hub) Run() {
 			if err != nil {
 				slog.Error("json err", "err", err)
 			}
-			slog.Debug("ws msg", "uid", msg.UID, "msg", msg.Data)
+			if msg.MsgType == DEBUG {
+				slog.Debug("ws msg", "uid", msg.UID, "msg", msg.Data)
+			}
 			for client := range h.Clients {
 				select {
 				case client.Send <- []byte(msgJson):
@@ -196,8 +198,8 @@ func (h *Hub) Run() {
 					delete(h.Clients, client)
 				}
 			}
-		case cmd := <-h.Destroy:
-			slog.Debug("hub received c4", "cmd", cmd)
+		case <-h.Destroy:
+			slog.Debug("[hub] recieved destroy")
 			return
 		case <-h.AddedSong:
 			slog.Debug("hub check playlist")
@@ -208,51 +210,41 @@ func (h *Hub) Run() {
 
 func (h *Hub) enqueuedPlaylist() {
 	ctx, cancel := context.WithTimeout(context.Background(), ytdlp.TIMEOUT_AUDIO)
+	defer cancel()
 	node, err := h.Playlist.Dequeue()
 	if err != nil {
-		slog.Error("hub dequeue err", "err", err)
+		slog.Error("[hub] dequeue playlist err", "err", err)
+		return
 	}
 	req := ytdlp.RequestAudio{
-		Ctx:      ctx,
-		URL:      node.URL,
-		Response: make(chan any),
+		Ctx:   ctx,
+		URL:   node.URL,
+		ErrCh: make(chan error),
+		FinCh: make(chan struct{}),
+	}
+	status := ytdlp.AudioDownloader.Submit(ctx, &req)
+
+	// mq response
+	if status != http.StatusAccepted {
+		slog.Info("[hub] failed to enqueue request", "request", req)
+		return
 	}
 
-	go func() {
-		defer cancel()
-
-		// mq response
-		select {
-		case <-ctx.Done():
-			slog.Debug("[hub] request audio done")
-			return
-		case res := <-req.Response:
-			if accepted, ok := res.(bool); ok {
-				slog.Debug("[hub] status", "status", accepted)
-				if !accepted {
-					return
-				}
-			}
+	// audio byte response
+	select {
+	case <-ctx.Done():
+		slog.Info("[hub] request audio timeout")
+		return
+	case err := <-req.ErrCh:
+		slog.Info("[hub] audio byte reponse err", "req", req, "err", err)
+		return
+	case <-req.FinCh:
+		msg := Message{
+			MsgType: EVENT_PLAYLIST,
+			Data:    req.Response,
 		}
-
-		// audio byte response
-		select {
-		case <-ctx.Done():
-			slog.Debug("[hub] request audio done")
-			return
-		case res := <-req.Response:
-			if audioBytes, ok := res.([]byte); ok {
-				slog.Debug("wtf1")
-				msg := Message{
-					MsgType: DEBUG,
-					Data:    audioBytes,
-				}
-				h.BroadcastMsg(msg)
-				slog.Debug("wtf2")
-			}
-		}
-	}()
-	ytdlp.AudioDownloader.Submit(ctx, &req)
+		h.BroadcastMsg(msg)
+	}
 }
 
 func (h *Hub) Timeout(sid *uuid.UUID) {

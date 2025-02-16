@@ -7,7 +7,6 @@ import (
 	"main/core/ytdlp"
 	"net/http"
 	"strings"
-	"sync"
 )
 
 type wsInfoJson struct {
@@ -53,36 +52,41 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 	// the request which is being processed, the result will be sent with websocket
 	ctx, cancel := context.WithTimeout(context.Background(), ytdlp.TIMEOUT_JSON)
 	req := ytdlp.RequestJson{
-		Ctx:      ctx,
-		URL:      pURL,
-		Response: make(chan any),
+		Ctx:   ctx,
+		URL:   pURL,
+		ErrCh: make(chan error),
+		FinCh: make(chan struct{}),
 	}
-	wg := sync.WaitGroup{}
-	wg.Add(1)
+	status := ytdlp.JsonDownloader.Submit(ctx, &req)
+
+	// http: mq response
+	switch status {
+	case http.StatusAccepted:
+		w.WriteHeader(http.StatusAccepted)
+	case http.StatusTooManyRequests:
+		w.WriteHeader(http.StatusTooManyRequests)
+		cancel()
+		return
+	case http.StatusRequestTimeout:
+		w.WriteHeader(http.StatusRequestTimeout)
+		slog.Debug("[api] mq response ctx timeout")
+		cancel()
+		return
+	default:
+		slog.Error("UNKNOWN MQ Response", "status", status)
+		cancel()
+		return
+	}
+
+	// websocket: json response
+	// we would like to repond the client asap,
+	// so the websocket response will be wrapped by a goroutine
+	// and close the http reponse writer
 	go func() {
-		defer wg.Done()
 		defer cancel()
-
-		// http: mq response
 		select {
 		case <-ctx.Done():
-			w.WriteHeader(http.StatusRequestTimeout)
-			slog.Debug("[api] mq response ctx done")
-			return
-		case res := <-req.Response:
-			if status, ok := res.(int); ok {
-				w.WriteHeader(status)
-			} else {
-				http.Error(w, "", http.StatusInternalServerError)
-				slog.Debug("[api] mq response err, failed to cast int")
-				return
-			}
-		}
-
-		// websocket: json response
-		select {
-		case <-ctx.Done():
-			slog.Debug("json response ctx done")
+			slog.Debug("[api] json response ctx timeout")
 			msg := room.Message{
 				MsgType: 3,
 				To:      client.ID,
@@ -90,49 +94,42 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 			}
 			client.Hub.BroadcastMsg(msg)
 			return
-		case res := <-req.Response:
-			if json, ok := res.(ytdlp.InfoJson); ok {
-				// enqueue playlist
-				node := room.MusicNode{
-					URL:      pURL,
-					InfoJson: json,
-				}
-				if err := client.Hub.Playlist.Enqueue(&node); err != nil {
-					slog.Error("[api] enqueue err", "err", err)
-					return
-				} else {
-					client.Hub.Playlist.Traverse()
-				}
-				// broadcast json to websocket
-				wsInfoJson := wsInfoJson{
-					ID:       node.ID,
-					InfoJson: json,
-				}
-				msg := room.Message{
-					MsgType:  3,
-					UID:      client.ID.String(),
-					Username: client.Name,
-					Data:     wsInfoJson,
-				}
-				client.Hub.BroadcastMsg(msg)
-
-				// notify hub
-				client.Hub.AddedSong <- struct{}{}
-			} else if err, ok := res.(error); ok {
-				slog.Error("[api] info json err", "err", err)
-				msg := room.Message{
-					MsgType: 3,
-					To:      client.ID,
-					Data:    "failed",
-				}
-				client.Hub.BroadcastMsg(msg)
-				return
+		case err := <-req.ErrCh:
+			slog.Error("[api] info json err", "req", req, "err", err)
+			msg := room.Message{
+				MsgType: 3,
+				To:      client.ID,
+				Data:    "failed",
 			}
+			client.Hub.BroadcastMsg(msg)
+			return
+		case <-req.FinCh:
+			// enqueue playlist
+			node := room.MusicNode{
+				URL:      pURL,
+				InfoJson: req.Response,
+			}
+			if err := client.Hub.Playlist.Enqueue(&node); err != nil {
+				slog.Error("[api] enqueue err", "err", err)
+				return
+			} else {
+				client.Hub.Playlist.Traverse()
+			}
+			// broadcast json to websocket
+			wsInfoJson := wsInfoJson{
+				ID:       node.ID,
+				InfoJson: req.Response,
+			}
+			msg := room.Message{
+				MsgType:  3,
+				UID:      client.ID.String(),
+				Username: client.Name,
+				Data:     wsInfoJson,
+			}
+			client.Hub.BroadcastMsg(msg)
+
+			// notify hub
+			client.Hub.AddedSong <- struct{}{}
 		}
 	}()
-	ytdlp.JsonDownloader.Submit(ctx, &req)
-	wg.Wait()
-
-	// w.Write([]byte(strconv.Itoa(node.ID)))
-	// go fetchInfoJson(&node, client)
 }

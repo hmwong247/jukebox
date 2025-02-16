@@ -32,12 +32,6 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// run the websocket hub if it is a new hub
-	// if newHub, ok := room.NewHubs[sid]; ok {
-	// 	go newHub.Run()
-	// 	delete(room.NewHubs, sid)
-	// }
-
 	profile, ok := entryProfiles[sid]
 	if !ok {
 		slog.Error("ws: session does not exists", "status", http.StatusForbidden)
@@ -80,7 +74,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		Data:     "join",
 	}
 	// broadcast before joining, avoid duplicating in client in frontend
-	go client.Hub.BroadcastMsg(msg)
+	client.Hub.BroadcastMsg(msg)
 	client.Hub.Register <- client
 	go client.Read()
 	go client.Write()
