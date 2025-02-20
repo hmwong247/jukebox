@@ -3,6 +3,7 @@ package ytdlp
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/url"
@@ -32,8 +33,9 @@ type InfoJson struct {
 func DownloadAudio(rawURL string) ([]byte, error) {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
-		slog.Info("url parse failed", "err", err, "url", parsedURL)
-		return []byte{}, err
+		errStr := fmt.Sprintf("url parse failed, err: %v, url: %v", err, parsedURL)
+		newErr := errors.New(errStr)
+		return []byte{}, newErr
 	}
 
 	opt := append(YTDLP_OPT_STDOUT, parsedURL.String())
@@ -45,27 +47,27 @@ func DownloadAudio(rawURL string) ([]byte, error) {
 	if errors.Is(cmd.Err, exec.ErrDot) {
 		cmd.Err = nil
 	}
-	var exitStatus int
 	err = cmd.Start()
 	if err != nil {
-		slog.Info("cmd start err", "err", err)
-		return []byte{}, err
+		errStr := fmt.Sprintf("cmd start error: %v", err)
+		newErr := errors.New(errStr)
+		return []byte{}, newErr
 	}
 
 	audioBytes, err := io.ReadAll(stdout)
 	if err != nil {
-		slog.Info("io read err", "err", err)
-		return []byte{}, err
+		errStr := fmt.Sprintf("io read error: %v", err)
+		newErr := errors.New(errStr)
+		return []byte{}, newErr
 	}
 
 	if err := cmd.Wait(); err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
-			slog.Info("cmd wait err", "exitError", exitError)
-			return []byte{}, err
+			errStr := fmt.Sprintf("cmd wait error: %v", exitError)
+			newErr := errors.New(errStr)
+			return []byte{}, newErr
 		}
 	}
-
-	slog.Debug("exited", "exitStatus", exitStatus)
 
 	return audioBytes, nil
 }
@@ -73,8 +75,9 @@ func DownloadAudio(rawURL string) ([]byte, error) {
 func DownloadThumbnail(rawURL string) ([]byte, error) {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
-		slog.Info("url parse failed", "err", err, "url", parsedURL)
-		return []byte{}, err
+		errStr := fmt.Sprintf("url parse failed, err: %v, url: %v", err, parsedURL)
+		newErr := errors.New(errStr)
+		return []byte{}, newErr
 	}
 
 	return []byte{}, nil
@@ -83,8 +86,9 @@ func DownloadThumbnail(rawURL string) ([]byte, error) {
 func DownloadInfoJson(rawURL string) (InfoJson, error) {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
-		slog.Info("url parse failed", "err", err, "url", parsedURL)
-		return InfoJson{}, err
+		errStr := fmt.Sprintf("url parse failed, err: %v, url: %v", err, parsedURL)
+		newErr := errors.New(errStr)
+		return InfoJson{}, newErr
 	}
 
 	opt := append(YTDLP_OPT_INFOJSON, parsedURL.String())
@@ -95,43 +99,50 @@ func DownloadInfoJson(rawURL string) (InfoJson, error) {
 	// command piping
 	cmd2.Stdin, err = cmd1.StdoutPipe()
 	if err != nil {
-		slog.Error("cmd1.Stdoutpipe err", "err", err)
-		return InfoJson{}, err
+		errStr := fmt.Sprintf("cmd1.Stdoutpipe error, err: %v", err)
+		newErr := errors.New(errStr)
+		return InfoJson{}, newErr
 	}
 	finalStdout, err := cmd2.StdoutPipe()
 	if err != nil {
-		slog.Error("cmd2.Stdoutpipe err", "err", err)
-		return InfoJson{}, err
+		errStr := fmt.Sprintf("cmd2.Stdoutpipe error, err: %v", err)
+		newErr := errors.New(errStr)
+		return InfoJson{}, newErr
 	}
 
 	// start execute cmd
 	err = cmd1.Start()
 	if err != nil {
-		slog.Info("cmd1 start err", "err", err)
-		return InfoJson{}, err
+		errStr := fmt.Sprintf("cmd1 start error, err: %v", err)
+		newErr := errors.New(errStr)
+		return InfoJson{}, newErr
 	}
 	err = cmd2.Start()
 	if err != nil {
-		slog.Info("cmd2 start err", "err", err)
-		return InfoJson{}, err
+		errStr := fmt.Sprintf("cmd2 start error, err: %v", err)
+		newErr := errors.New(errStr)
+		return InfoJson{}, newErr
 	}
 	if err := cmd1.Wait(); err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
-			slog.Info("cmd1 wait err", "exitError", exitError)
-			return InfoJson{}, err
+			errStr := fmt.Sprintf("cmd1 wait error, exitError: %v", exitError)
+			newErr := errors.New(errStr)
+			return InfoJson{}, newErr
 		}
 	}
 
 	jsonBytes, err := io.ReadAll(finalStdout)
 	if err != nil {
-		slog.Error("finalStdout io error", "err", err)
-		return InfoJson{}, err
+		errStr := fmt.Sprintf("finalStdout io error, err: %v", err)
+		newErr := errors.New(errStr)
+		return InfoJson{}, newErr
 	}
 
 	if err := cmd2.Wait(); err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
-			slog.Info("cmd2 wait err", "exitError", exitError)
-			return InfoJson{}, err
+			errStr := fmt.Sprintf("cmd2 wait error, exitError: %v", exitError)
+			newErr := errors.New(errStr)
+			return InfoJson{}, newErr
 		}
 	}
 
@@ -139,8 +150,9 @@ func DownloadInfoJson(rawURL string) (InfoJson, error) {
 
 	infoJson := InfoJson{}
 	if err := json.Unmarshal(jsonBytes, &infoJson); err != nil {
-		slog.Debug("json unmarshal err", "err", err)
-		return InfoJson{}, err
+		errStr := fmt.Sprintf("json unmarshal error, err: %v", err)
+		newErr := errors.New(errStr)
+		return InfoJson{}, newErr
 	}
 	// slog.Debug("infoJson", "json", infoJson)
 

@@ -72,7 +72,7 @@ func (c *Client) Read() {
 			Username: c.Name,
 			Data:     string(msgRead),
 		}
-		go c.Hub.BroadcastMsg(msg)
+		go c.Hub.BroadcastMsg(&msg)
 	}
 }
 

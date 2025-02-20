@@ -92,7 +92,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 				To:      client.ID,
 				Data:    "timeout",
 			}
-			client.Hub.BroadcastMsg(msg)
+			client.Hub.BroadcastMsg(&msg)
 			return
 		case err := <-req.ErrCh:
 			slog.Error("[api] info json err", "req", req, "err", err)
@@ -101,7 +101,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 				To:      client.ID,
 				Data:    "failed",
 			}
-			client.Hub.BroadcastMsg(msg)
+			client.Hub.BroadcastMsg(&msg)
 			return
 		case <-req.FinCh:
 			// enqueue playlist
@@ -126,7 +126,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 				Username: client.Name,
 				Data:     wsInfoJson,
 			}
-			client.Hub.BroadcastMsg(msg)
+			client.Hub.BroadcastMsg(&msg)
 
 			// notify hub
 			client.Hub.AddedSong <- struct{}{}

@@ -20,8 +20,8 @@ func main() {
 	slog.Info("start")
 
 	// maybe cancellable?
-	dlpctx, cancel := context.WithCancel(context.Background())
-	_ = cancel
+	dlpctx, dlpcancel := context.WithCancel(context.Background())
+	defer dlpcancel()
 	jsonctx := context.WithValue(dlpctx, "name", "json downloader")
 	audioctx := context.WithValue(dlpctx, "name", "audio downloader")
 	go ytdlp.JsonDownloader.Run(jsonctx)

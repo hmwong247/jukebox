@@ -66,7 +66,7 @@ func (wp *WorkerPool) Run(ctx context.Context) {
 		w := newWorker(i, wp.workerq)
 		wp.workers = append(wp.workers, w)
 		go w.Start(ctx)
-		slog.Debug("create workers", "cap", cap(wp.workers))
+		slog.Debug("created worker", "id", i)
 	}
 	for {
 		select {

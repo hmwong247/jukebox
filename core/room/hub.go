@@ -80,8 +80,8 @@ type Hub struct {
 	NextSong  chan struct{}
 
 	// message channel
-	broadcast chan Message
-	direct    chan Message
+	broadcast chan *Message
+	direct    chan *Message
 }
 
 func CreateHub(id uuid.UUID) *Hub {
@@ -110,8 +110,8 @@ func CreateHub(id uuid.UUID) *Hub {
 		AddedSong: make(chan struct{}),
 		NextSong:  make(chan struct{}),
 
-		broadcast: make(chan Message),
-		direct:    make(chan Message),
+		broadcast: make(chan *Message),
+		direct:    make(chan *Message),
 	}
 }
 
@@ -149,7 +149,7 @@ func (h *Hub) Run() {
 					Username: client.Name,
 					Data:     "left",
 				}
-				go h.BroadcastMsg(msg)
+				go h.BroadcastMsg(&msg)
 
 				// clean up
 				delete(h.Clients, client)
@@ -175,7 +175,7 @@ func (h *Hub) Run() {
 							Username: h.Host.Name,
 							Data:     "host",
 						}
-						go h.BroadcastMsg(msg)
+						go h.BroadcastMsg(&msg)
 					}
 				}
 			}
@@ -243,7 +243,7 @@ func (h *Hub) enqueuedPlaylist() {
 			MsgType: EVENT_PLAYLIST,
 			Data:    req.Response,
 		}
-		h.BroadcastMsg(msg)
+		h.BroadcastMsg(&msg)
 	}
 }
 
@@ -288,8 +288,7 @@ func (h *Hub) NextHost() *Client {
 	return match
 }
 
-func (h *Hub) BroadcastMsg(msg Message) {
-	// wrap by goroutine to avoid deadlock
+func (h *Hub) BroadcastMsg(msg *Message) {
 	// slog.Debug("broadcast start")
 	if len(h.Clients) > 0 {
 		select {

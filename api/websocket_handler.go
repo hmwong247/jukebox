@@ -74,7 +74,7 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		Data:     "join",
 	}
 	// broadcast before joining, avoid duplicating in client in frontend
-	client.Hub.BroadcastMsg(msg)
+	client.Hub.BroadcastMsg(&msg)
 	client.Hub.Register <- client
 	go client.Read()
 	go client.Write()
