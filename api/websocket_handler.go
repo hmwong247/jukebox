@@ -67,14 +67,14 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	room.TokenMap[sid] = &client.ID
 
 	// broadcast join notification
-	msg := room.Message{
-		MsgType:  1,
+	msg := room.RoomEventMessage{
+		MsgType:  room.MSG_EVENT_ROOM,
 		UID:      client.ID.String(),
 		Username: client.Name,
-		Data:     "join",
+		Event:    "join",
 	}
 	// broadcast before joining, avoid duplicating in client in frontend
-	client.Hub.BroadcastMsg(&msg)
+	client.Hub.RoomEvtMsg(&msg)
 	client.Hub.Register <- client
 	go client.Read()
 	go client.Write()

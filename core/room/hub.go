@@ -35,32 +35,6 @@ var (
 	NewHubs = make(map[uuid.UUID]*Hub)
 )
 
-type MsgType int
-
-const (
-	DEBUG MsgType = iota
-	EVENT_ROOM_ENTRY
-	_
-	EVENT_PLAYLIST
-	_
-	RESERVED
-)
-
-/*
-type 0: debug
-type 1: room entry event
-type 3: playlist event
-type 5: reserved
-*/
-type Message struct {
-	MsgType  MsgType
-	From     uuid.UUID
-	To       uuid.UUID
-	UID      string
-	Username string
-	Data     interface{} `json:"Data"`
-}
-
 type Hub struct {
 	ID        uuid.UUID
 	hubctx    context.Context
@@ -80,13 +54,15 @@ type Hub struct {
 	NextSong  chan struct{}
 
 	// message channel
-	broadcast chan *Message
-	direct    chan *Message
+	broadcast   chan *Message
+	roomEvt     chan *RoomEventMessage
+	playlistEvt chan *PlaylistEventMessage
+	direct      chan *DirectMessage
 }
 
 func CreateHub(id uuid.UUID) *Hub {
 	clients := make(map[*Client]int)
-	playlist := CreatePlaylist()
+	playlist := NewPlaylist()
 	mq, err := mq.NewWorkerPool(1, 1)
 	if err != nil {
 		slog.Error("task queue err", "err", err)
@@ -110,8 +86,10 @@ func CreateHub(id uuid.UUID) *Hub {
 		AddedSong: make(chan struct{}),
 		NextSong:  make(chan struct{}),
 
-		broadcast: make(chan *Message),
-		direct:    make(chan *Message),
+		broadcast:   make(chan *Message),
+		roomEvt:     make(chan *RoomEventMessage),
+		playlistEvt: make(chan *PlaylistEventMessage),
+		direct:      make(chan *DirectMessage),
 	}
 }
 
@@ -143,13 +121,13 @@ func (h *Hub) Run() {
 
 			if _, ok := h.Clients[client]; ok {
 				// broadcast leave notification
-				msg := Message{
-					MsgType:  EVENT_ROOM_ENTRY,
+				msg := RoomEventMessage{
+					MsgType:  MSG_EVENT_ROOM,
 					UID:      client.ID.String(),
 					Username: client.Name,
-					Data:     "left",
+					Event:    "left",
 				}
-				go h.BroadcastMsg(&msg)
+				go h.RoomEvtMsg(&msg)
 
 				// clean up
 				delete(h.Clients, client)
@@ -169,13 +147,13 @@ func (h *Hub) Run() {
 					// check host transfer
 					if h.Host.ID == client.ID {
 						h.Host = h.NextHost()
-						msg := Message{
-							MsgType:  EVENT_ROOM_ENTRY,
+						msg := RoomEventMessage{
+							MsgType:  MSG_EVENT_ROOM,
 							UID:      h.Host.ID.String(),
 							Username: h.Host.Name,
-							Data:     "host",
+							Event:    "host",
 						}
-						go h.BroadcastMsg(&msg)
+						go h.RoomEvtMsg(&msg)
 					}
 				}
 			}
@@ -187,8 +165,8 @@ func (h *Hub) Run() {
 			if err != nil {
 				slog.Error("json err", "err", err)
 			}
-			if msg.MsgType == DEBUG {
-				slog.Debug("ws msg", "uid", msg.UID, "msg", msg.Data)
+			if msg.MsgType == MSG_DEBUG {
+				slog.Debug("[hub] ws msg", "msg", string(msgJson))
 			}
 			for client := range h.Clients {
 				select {
@@ -198,6 +176,63 @@ func (h *Hub) Run() {
 					delete(h.Clients, client)
 				}
 			}
+		case msg := <-h.roomEvt:
+			// broadcast room event message
+			msgJson, err := json.Marshal(msg)
+			if err != nil {
+				slog.Error("json err", "err", err)
+			}
+			if msg.MsgType == MSG_DEBUG {
+				slog.Debug("[hub] ws msg", "msg", string(msgJson))
+			}
+			for client := range h.Clients {
+				select {
+				case client.Send <- []byte(msgJson):
+				default:
+					close(client.Send)
+					delete(h.Clients, client)
+				}
+			}
+		case msg := <-h.playlistEvt:
+			// broadcast playlist event message
+			msgJson, err := json.Marshal(msg)
+			if err != nil {
+				slog.Error("json err", "err", err)
+			}
+			if msg.MsgType == MSG_DEBUG {
+				slog.Debug("[hub] ws msg", "msg", string(msgJson))
+			}
+			for client := range h.Clients {
+				select {
+				case client.Send <- []byte(msgJson):
+				default:
+					close(client.Send)
+					delete(h.Clients, client)
+				}
+			}
+
+		case msg := <-h.direct:
+			if msg.To == uuid.Nil {
+				slog.Error("[hub] uid is not set in direct message")
+				continue
+			}
+			msgJson, err := json.Marshal(msg)
+			if err != nil {
+				slog.Error("json err", "err", err)
+			}
+			if msg.MsgType == MSG_DEBUG {
+				slog.Debug("[hub] ws msg", "msg", string(msgJson))
+			}
+			ClientMapMutex.RLock()
+			if client, ok := ClientMap[msg.To]; ok {
+				select {
+				case client.Send <- []byte(msgJson):
+				default:
+					close(client.Send)
+					delete(h.Clients, client)
+				}
+			}
+			ClientMapMutex.RUnlock()
 		case <-h.Destroy:
 			slog.Debug("[hub] recieved destroy")
 			return
@@ -222,7 +257,7 @@ func (h *Hub) enqueuedPlaylist() {
 		ErrCh: make(chan error),
 		FinCh: make(chan struct{}),
 	}
-	status := ytdlp.AudioDownloader.Submit(ctx, &req)
+	status, _ := ytdlp.AudioDownloader.Submit(ctx, &req)
 
 	// mq response
 	if status != http.StatusAccepted {
@@ -240,7 +275,7 @@ func (h *Hub) enqueuedPlaylist() {
 		return
 	case <-req.FinCh:
 		msg := Message{
-			MsgType: EVENT_PLAYLIST,
+			MsgType: MSG_EVENT_PLAYLIST,
 			Data:    req.Response,
 		}
 		h.BroadcastMsg(&msg)
@@ -302,4 +337,44 @@ func (h *Hub) BroadcastMsg(msg *Message) {
 		return
 	}
 	// slog.Debug("broadcast no client")
+}
+
+func (h *Hub) RoomEvtMsg(msg *RoomEventMessage) {
+	if len(h.Clients) > 0 {
+		select {
+		case <-h.Destroy:
+			return
+		default:
+		}
+		h.roomEvt <- msg
+		return
+	}
+}
+
+func (h *Hub) PlaylistMsg(msg *PlaylistEventMessage) {
+	if len(h.Clients) > 0 {
+		select {
+		case <-h.Destroy:
+			return
+		default:
+		}
+		h.playlistEvt <- msg
+		return
+	}
+}
+
+func (h *Hub) DirectMsg(msg *DirectMessage) {
+	slog.Debug("direct message start")
+	if len(h.Clients) > 0 {
+		select {
+		case <-h.Destroy:
+			slog.Debug("direct message destroy closed")
+			return
+		default:
+		}
+		h.direct <- msg
+		slog.Debug("direct message not blocking")
+		return
+	}
+	slog.Debug("directMsg no client")
 }

@@ -35,7 +35,7 @@ function connectWS(endpoint) {
 }
 
 function updateRoomStatus(msg) {
-	const payload = msg.Data
+	const payload = msg.Event
 	switch (payload) {
 		case "join": {
 			session.userList[msg.UID] = msg.Username

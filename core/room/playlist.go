@@ -1,10 +1,10 @@
 package room
 
 import (
-	"container/list"
 	"errors"
 	"fmt"
 	"main/core/ytdlp"
+	"main/utils/linkedlist"
 	"sync"
 )
 
@@ -12,40 +12,52 @@ const (
 	LIST_MAX_SIZE = 1024
 )
 
-type MusicNode struct {
+type autoIncID struct {
+	sync.Mutex
+	id int
+}
+
+func (a *autoIncID) ID() int {
+	a.Lock()
+	defer a.Unlock()
+	a.id++
+	return a.id
+}
+
+type MusicInfo struct {
 	ID        int
 	URL       string
 	AudioByte []byte
 	InfoJson  ytdlp.InfoJson
 }
 
+// type MusicInfo is not comparable,
+// pointer to pointer to MusicInfo is needed
 type Playlist struct {
-	sync.RWMutex // no need
-	nodeList     *list.List
-	nodeMap      map[int]*list.Element
-	tail         int // auto increament
+	sync.RWMutex
+	list   *linkedlist.List[*MusicInfo]
+	autoID autoIncID
 }
 
-func CreatePlaylist() *Playlist {
+func NewPlaylist() *Playlist {
 	return &Playlist{
-		nodeList: list.New(),
-		nodeMap:  make(map[int]*list.Element),
-		tail:     0,
+		list:   linkedlist.New[*MusicInfo](),
+		autoID: autoIncID{id: -1},
 	}
 }
 
-func (playlist *Playlist) Enqueue(node *MusicNode) error {
+func (playlist *Playlist) Enqueue(info *MusicInfo) error {
 	playlist.Lock()
 	defer playlist.Unlock()
 
-	if playlist.nodeList.Len() >= LIST_MAX_SIZE {
+	if playlist.list.Size() >= LIST_MAX_SIZE {
 		return errors.New("enqueue err: playlist reached max size")
 	}
 
-	node.ID = playlist.tail
-	elem := playlist.nodeList.PushBack(*node)
-	playlist.nodeMap[playlist.tail] = elem
-	playlist.tail++
+	info.ID = playlist.autoID.ID()
+	if err := playlist.list.InsertTail(&info); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -54,61 +66,45 @@ func (playlist *Playlist) Remove(id int) error {
 	playlist.Lock()
 	defer playlist.Unlock()
 
-	elem, ok := playlist.nodeMap[id]
-	if !ok {
-		return errors.New("remove err: element not found")
+	var n *linkedlist.Node[*MusicInfo] = nil
+	for n = playlist.list.Head(); n != nil; n = n.Next() {
+		if infoPtr := n.Val(); (*infoPtr).ID == id {
+			break
+		}
 	}
-	playlist.nodeList.Remove(elem)
-	delete(playlist.nodeMap, id)
 
-	return nil
+	if n != nil {
+		err := playlist.list.Remove(n)
+		return err
+	}
+
+	return errors.New("id not found")
 }
 
 // return a copy of the music node
-func (playlist *Playlist) Dequeue() (MusicNode, error) {
+func (playlist *Playlist) Dequeue() (*MusicInfo, error) {
 	playlist.Lock()
 	defer playlist.Unlock()
 
-	elem := playlist.nodeList.Front()
-	node := elem.Value.(MusicNode)
-	if _, ok := playlist.nodeMap[node.ID]; !ok {
-		return MusicNode{}, errors.New("dequeue err: element not found")
+	node := playlist.list.Head()
+	info := node.Val()
+	if err := playlist.list.Remove(node); err != nil {
+		return nil, err
 	}
 
-	playlist.nodeList.Remove(elem)
-	delete(playlist.nodeMap, node.ID)
-
-	return node, nil
-}
-
-// return a reference of the music node
-func (playlist *Playlist) Head() (*MusicNode, error) {
-	playlist.RLock()
-	defer playlist.RUnlock()
-
-	elem := playlist.nodeList.Front()
-	node := elem.Value.(MusicNode)
-	if _, ok := playlist.nodeMap[node.ID]; !ok {
-		return &MusicNode{}, errors.New("dequeue err: element not found")
-	}
-
-	return &node, nil
+	return *info, nil
 }
 
 func (playlist *Playlist) Clear() {
 	playlist.Lock()
 	defer playlist.Unlock()
 
-	playlist.nodeList.Init()
-	clear(playlist.nodeMap)
+	playlist.list.Init()
 }
 
 func (playlist *Playlist) Traverse() {
 	playlist.RLock()
 	defer playlist.RUnlock()
 
-	for e := playlist.nodeList.Front(); e != nil; e = e.Next() {
-		node := e.Value.(MusicNode)
-		fmt.Println(node)
-	}
+	fmt.Printf("playlist: %v\n", playlist.list)
 }

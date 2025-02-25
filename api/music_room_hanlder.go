@@ -3,16 +3,13 @@ package api
 import (
 	"context"
 	"log/slog"
+	"main/core/mq"
 	"main/core/room"
 	"main/core/ytdlp"
 	"net/http"
+	"strconv"
 	"strings"
 )
-
-type wsInfoJson struct {
-	ID int
-	ytdlp.InfoJson
-}
 
 // route: "POST /api/enqueue"
 func EnqueueURL(w http.ResponseWriter, r *http.Request) {
@@ -57,12 +54,13 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 		ErrCh: make(chan error),
 		FinCh: make(chan struct{}),
 	}
-	status := ytdlp.JsonDownloader.Submit(ctx, &req)
+	status, taskID := ytdlp.JsonDownloader.Submit(ctx, &req)
 
 	// http: mq response
 	switch status {
 	case http.StatusAccepted:
 		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte(strconv.FormatInt(taskID, 10)))
 	case http.StatusTooManyRequests:
 		w.WriteHeader(http.StatusTooManyRequests)
 		cancel()
@@ -87,25 +85,33 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
 			slog.Debug("[api] json response ctx timeout")
-			msg := room.Message{
-				MsgType: 3,
-				To:      client.ID,
-				Data:    "timeout",
+			taskStatusJson := mq.TaskStatus{
+				TaskID: taskID,
+				Status: "timeout",
 			}
-			client.Hub.BroadcastMsg(&msg)
+			msg := room.DirectMessage{
+				MsgType: room.MSG_EVENT_PLAYLIST,
+				To:      client.ID,
+				Data:    taskStatusJson,
+			}
+			client.Hub.DirectMsg(&msg)
 			return
 		case err := <-req.ErrCh:
 			slog.Error("[api] info json err", "req", req, "err", err)
-			msg := room.Message{
-				MsgType: 3,
-				To:      client.ID,
-				Data:    "failed",
+			taskStatusJson := mq.TaskStatus{
+				TaskID: taskID,
+				Status: "failed",
 			}
-			client.Hub.BroadcastMsg(&msg)
+			msg := room.DirectMessage{
+				MsgType: room.MSG_EVENT_PLAYLIST,
+				To:      client.ID,
+				Data:    taskStatusJson,
+			}
+			client.Hub.DirectMsg(&msg)
 			return
 		case <-req.FinCh:
 			// enqueue playlist
-			node := room.MusicNode{
+			node := room.MusicInfo{
 				URL:      pURL,
 				InfoJson: req.Response,
 			}
@@ -115,18 +121,31 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 			} else {
 				client.Hub.Playlist.Traverse()
 			}
+
+			// responds ok to client
+			taskStatusJson := mq.TaskStatus{
+				TaskID: taskID,
+				Status: "ok",
+			}
+			dmsg := room.DirectMessage{
+				MsgType: room.MSG_EVENT_PLAYLIST,
+				To:      client.ID,
+				Data:    taskStatusJson,
+			}
+			client.Hub.DirectMsg(&dmsg)
+
 			// broadcast json to websocket
-			wsInfoJson := wsInfoJson{
+			wsInfoJson := room.WSInfoJson{
 				ID:       node.ID,
 				InfoJson: req.Response,
 			}
-			msg := room.Message{
-				MsgType:  3,
+			msg := room.PlaylistEventMessage{
+				MsgType:  room.MSG_EVENT_PLAYLIST,
 				UID:      client.ID.String(),
 				Username: client.Name,
 				Data:     wsInfoJson,
 			}
-			client.Hub.BroadcastMsg(&msg)
+			client.Hub.PlaylistMsg(&msg)
 
 			// notify hub
 			client.Hub.AddedSong <- struct{}{}

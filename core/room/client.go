@@ -67,7 +67,7 @@ func (c *Client) Read() {
 		// msg = bytes.TrimSpace(bytes.Replace(msg, "\n", " ", -1))
 
 		msg := Message{
-			MsgType:  1,
+			MsgType:  MSG_DEBUG,
 			UID:      c.ID.String(),
 			Username: c.Name,
 			Data:     string(msgRead),

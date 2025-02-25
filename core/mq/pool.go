@@ -2,10 +2,13 @@ package mq
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
+
+	"github.com/bwmarrin/snowflake"
 )
 
 const (
@@ -14,8 +17,13 @@ const (
 )
 
 var (
-// PoolID = autoIncID{id: -1}
+	PoolID = autoIncID{id: -1}
 )
+
+type TaskStatus struct {
+	TaskID int64
+	Status string
+}
 
 type autoIncID struct {
 	sync.Mutex
@@ -30,10 +38,11 @@ func (a *autoIncID) ID() int {
 }
 
 type WorkerPool struct {
-	ID      autoIncID
-	workers []*Worker
-	workerq chan chan Task
-	taskq   chan Task
+	ID            int
+	snowflakeNode *snowflake.Node
+	workers       []*Worker
+	workerq       chan chan Task
+	taskq         chan Task
 }
 
 func NewWorkerPool(workernum uint, qbuffer int) (*WorkerPool, error) {
@@ -45,20 +54,28 @@ func NewWorkerPool(workernum uint, qbuffer int) (*WorkerPool, error) {
 	}
 	workerNum := min(workernum, MAX_CONCURRENT_WORKER_PER_POOL)
 	qBuffer := min(qbuffer-1, MAX_TASK_QUEUE_SIZE)
+	id := PoolID.ID()
+	node, err := snowflake.NewNode(int64(id))
+	if err != nil {
+		errStr := fmt.Sprintf("failed to create snowflake node, err: %v", err)
+		newErr := errors.New(errStr)
+		return &WorkerPool{}, newErr
+	}
 
 	return &WorkerPool{
-		ID:      autoIncID{id: -1},
-		workers: make([]*Worker, 0, workerNum),
-		workerq: make(chan chan Task),
-		taskq:   make(chan Task, qBuffer),
+		ID:            id,
+		snowflakeNode: node,
+		workers:       make([]*Worker, 0, workerNum),
+		workerq:       make(chan chan Task),
+		taskq:         make(chan Task, qBuffer),
 	}, nil
 }
 
 func (wp *WorkerPool) Run(ctx context.Context) {
 	if name, ok := ctx.Value("name").(string); ok {
-		slog.Debug("worker pool running", "name", name)
+		slog.Debug("worker pool running", "name", name, "id", wp.ID)
 	} else {
-		slog.Debug("worker pool ctx err", "name", name)
+		slog.Debug("worker pool ctx err", "name", name, "id", wp.ID)
 		return
 	}
 	// create workers
@@ -84,19 +101,20 @@ func (wp *WorkerPool) Run(ctx context.Context) {
 	}
 }
 
-func (wp *WorkerPool) Submit(ctx context.Context, t Task) int {
+func (wp *WorkerPool) Submit(ctx context.Context, t Task) (int, int64) {
 	select {
 	case <-ctx.Done():
 		slog.Info("submit cancelled", "ctx", ctx.Err())
-		return http.StatusRequestTimeout
+		return http.StatusRequestTimeout, -1
 	case wp.taskq <- t:
 		// signal to the caller
 		// t.Accepted(ctx)
 		// slog.Debug("submit ok")
-		return http.StatusAccepted
+		taskID := wp.snowflakeNode.Generate().Int64()
+		return http.StatusAccepted, taskID
 	default:
 		// t.Rejected(ctx)
 		// slog.Debug("submit err task queue is full", "task", t)
-		return http.StatusTooManyRequests
+		return http.StatusTooManyRequests, -1
 	}
 }
