@@ -125,6 +125,7 @@ func DownloadInfoJson(rawURL string) (InfoJson, error) {
 	}
 	if err := cmd1.Wait(); err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
+			cmd2.Wait()
 			errStr := fmt.Sprintf("cmd1 wait error, exitError: %v", exitError)
 			newErr := errors.New(errStr)
 			return InfoJson{}, newErr

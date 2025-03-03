@@ -32,13 +32,17 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 	uid, ok := room.TokenMap[sid]
 	if !ok {
 		slog.Error("token not found", "sid", sid.String())
-		http.Error(w, "", http.StatusInternalServerError)
+		http.Error(w, "", http.StatusBadRequest)
+		room.TokenMapMutex.RUnlock()
+		room.ClientMapMutex.RUnlock()
 		return
 	}
 	client, ok := room.ClientMap[*uid]
 	if !ok {
 		slog.Error("client not found", "uid", uid.String())
-		http.Error(w, "", http.StatusInternalServerError)
+		http.Error(w, "", http.StatusBadRequest)
+		room.TokenMapMutex.RUnlock()
+		room.ClientMapMutex.RUnlock()
 		return
 	}
 
