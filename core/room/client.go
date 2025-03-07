@@ -66,11 +66,12 @@ func (c *Client) Read() {
 		}
 		// msg = bytes.TrimSpace(bytes.Replace(msg, "\n", " ", -1))
 
-		msg := Message{
+		msgStr := string(msgRead)
+		msg := BroadcastMessage[Event]{
 			MsgType:  MSG_DEBUG,
 			UID:      c.ID.String(),
 			Username: c.Name,
-			Data:     string(msgRead),
+			Data:     Event(msgStr),
 		}
 		go c.Hub.BroadcastMsg(&msg)
 	}

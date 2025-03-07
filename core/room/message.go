@@ -1,11 +1,20 @@
 package room
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"main/core/mq"
 	"main/core/ytdlp"
 
 	"github.com/google/uuid"
 )
+
+type WSMessage interface {
+	Json() ([]byte, error)
+	Client() *Client
+	DebugMode() bool
+}
 
 // MsgType is still needed for frontend
 // type 0: debug
@@ -23,6 +32,7 @@ const (
 	MSG_RESERVED
 )
 
+// fallback message struct
 type Message struct {
 	MsgType  MsgType
 	UID      string      `json:",omitempty"`
@@ -30,11 +40,9 @@ type Message struct {
 	Data     interface{} `json:"Data"`
 }
 
-type RoomEventMessage struct {
-	MsgType  MsgType
-	UID      string
-	Username string
-	Event    string
+type Event string
+type BMData interface {
+	Event | WSInfoJson
 }
 
 type WSInfoJson struct {
@@ -42,15 +50,72 @@ type WSInfoJson struct {
 	ytdlp.InfoJson
 }
 
-type PlaylistEventMessage struct {
+type BroadcastMessage[T BMData] struct {
 	MsgType  MsgType
 	UID      string
 	Username string
-	Data     WSInfoJson
+	Data     T
 }
 
-type DirectMessage struct {
+func (bm *BroadcastMessage[T]) Json() ([]byte, error) {
+	msgJson, err := json.Marshal(bm)
+	if err != nil {
+		errStr := fmt.Sprintf("json error, %v", err)
+		newErr := errors.New(errStr)
+		return nil, newErr
+	}
+
+	return msgJson, nil
+}
+
+func (bm *BroadcastMessage[T]) Client() *Client {
+	return nil
+}
+
+func (bm *BroadcastMessage[T]) DebugMode() bool {
+	if bm.MsgType == MSG_DEBUG {
+		return true
+	}
+	return false
+}
+
+type DMData interface {
+	[]byte | mq.TaskStatus
+}
+
+type DirectMessage[T DMData] struct {
 	MsgType MsgType
-	To      uuid.UUID
-	Data    mq.TaskStatus `json:"Data"`
+	To      uuid.UUID `json:"-"`
+	Data    T
+}
+
+func (dm *DirectMessage[T]) Json() ([]byte, error) {
+	if dm.To == uuid.Nil {
+		return nil, errors.New("uid is not set in direct message")
+	}
+	msgJson, err := json.Marshal(dm)
+	if err != nil {
+		errStr := fmt.Sprintf("json error, %v", err)
+		newErr := errors.New(errStr)
+		return nil, newErr
+	}
+
+	return msgJson, nil
+}
+
+func (dm *DirectMessage[T]) Client() *Client {
+	ClientMapMutex.RLock()
+	defer ClientMapMutex.RUnlock()
+	if client, ok := ClientMap[dm.To]; ok {
+		return client
+	}
+
+	return nil
+}
+
+func (dm *DirectMessage[T]) DebugMode() bool {
+	if dm.MsgType == MSG_DEBUG {
+		return true
+	}
+	return false
 }

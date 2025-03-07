@@ -93,7 +93,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 				TaskID: taskID,
 				Status: "timeout",
 			}
-			msg := room.DirectMessage{
+			msg := room.DirectMessage[mq.TaskStatus]{
 				MsgType: room.MSG_EVENT_PLAYLIST,
 				To:      client.ID,
 				Data:    taskStatusJson,
@@ -106,7 +106,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 				TaskID: taskID,
 				Status: "failed",
 			}
-			msg := room.DirectMessage{
+			msg := room.DirectMessage[mq.TaskStatus]{
 				MsgType: room.MSG_EVENT_PLAYLIST,
 				To:      client.ID,
 				Data:    taskStatusJson,
@@ -119,11 +119,11 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 				URL:      pURL,
 				InfoJson: req.Response,
 			}
-			if err := client.Hub.Playlist.Enqueue(&node); err != nil {
+			if err := client.Hub.Player.Playlist.Enqueue(&node); err != nil {
 				slog.Error("[api] enqueue err", "err", err)
 				return
 			} else {
-				client.Hub.Playlist.Traverse()
+				client.Hub.Player.Playlist.Traverse()
 			}
 
 			// responds ok to client
@@ -131,7 +131,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 				TaskID: taskID,
 				Status: "ok",
 			}
-			dmsg := room.DirectMessage{
+			dmsg := room.DirectMessage[mq.TaskStatus]{
 				MsgType: room.MSG_EVENT_PLAYLIST,
 				To:      client.ID,
 				Data:    taskStatusJson,
@@ -143,16 +143,16 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 				ID:       node.ID,
 				InfoJson: req.Response,
 			}
-			msg := room.PlaylistEventMessage{
+			msg := room.BroadcastMessage[room.WSInfoJson]{
 				MsgType:  room.MSG_EVENT_PLAYLIST,
 				UID:      client.ID.String(),
 				Username: client.Name,
 				Data:     wsInfoJson,
 			}
-			client.Hub.PlaylistMsg(&msg)
+			client.Hub.BroadcastMsg(&msg)
 
 			// notify hub
-			client.Hub.AddedSong <- struct{}{}
+			client.Hub.Player.AddedSong <- struct{}{}
 		}
 	}()
 }
