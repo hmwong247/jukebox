@@ -42,7 +42,7 @@ func DownloadAudio(rawURL string) ([]byte, error) {
 	cmd := exec.Command(CMD_YTDLP, opt...)
 	stdout, err := cmd.StdoutPipe()
 
-	slog.Debug("final cmd", "cmd", cmd)
+	// slog.Debug("final cmd", "cmd", cmd)
 
 	if errors.Is(cmd.Err, exec.ErrDot) {
 		cmd.Err = nil
@@ -94,7 +94,7 @@ func DownloadInfoJson(rawURL string) (InfoJson, error) {
 	opt := append(YTDLP_OPT_INFOJSON, parsedURL.String())
 	cmd1 := exec.Command(CMD_YTDLP, opt...)
 	cmd2 := exec.Command(CMD_JQ, JQ_OPT...)
-	slog.Debug("final cmd", "cmd1", cmd1, "cmd2", cmd2)
+	// slog.Debug("final cmd", "cmd1", cmd1, "cmd2", cmd2)
 
 	// command piping
 	cmd2.Stdin, err = cmd1.StdoutPipe()

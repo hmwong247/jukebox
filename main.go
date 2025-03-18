@@ -49,6 +49,9 @@ func main() {
 	mux.HandleFunc("GET /api/create", api.HandleCreateRoom)
 	mux.HandleFunc("GET /api/users", api.UserList)
 	mux.HandleFunc("POST /api/enqueue", api.EnqueueURL)
+	mux.HandleFunc("GET /api/stream", api.StreamAudio)
+	mux.HandleFunc("GET /api/streamend", api.StreamEnd)
+	mux.HandleFunc("GET /api/streampreload", api.StreamPreload)
 
 	// WebSocket
 	mux.HandleFunc("/ws", api.HandleWebSocket)

@@ -115,3 +115,16 @@ func (c *Client) Write() {
 		}
 	}
 }
+
+// helper functions to control music player
+func (c *Client) SignalMPAdd() {
+	c.Hub.Player.AddedSong <- struct{}{}
+}
+
+func (c *Client) SignalMPNext() {
+	c.Hub.Player.NextSong <- struct{}{}
+}
+
+func (c *Client) SignalMPPreload() {
+	c.Hub.Player.Preload <- struct{}{}
+}

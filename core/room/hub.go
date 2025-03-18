@@ -31,6 +31,15 @@ var (
 	NewHubs = make(map[uuid.UUID]*Hub)
 )
 
+// debug
+func (h *Hub) B64ID() string {
+	return base64.RawURLEncoding.EncodeToString(h.ID[:])
+}
+
+func (c *Client) B64ID() string {
+	return base64.RawURLEncoding.EncodeToString(c.ID[:])
+}
+
 // Hub should only control what a websocket hub should do
 // seperate the music streaming to the music player
 type Hub struct {
@@ -130,12 +139,13 @@ func (h *Hub) Run() {
 			if msg.DebugMode() {
 				slog.Debug("[hub] ws msg", "msg", msg)
 			}
-			client := msg.Client()
-			select {
-			case client.Send <- msgJson:
-			default:
-				close(client.Send)
-				delete(h.Clients, client)
+			if client := msg.Client(); client != nil {
+				select {
+				case client.Send <- msgJson:
+				default:
+					close(client.Send)
+					delete(h.Clients, client)
+				}
 			}
 
 		case <-h.Destroy:

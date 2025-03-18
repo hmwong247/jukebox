@@ -28,7 +28,7 @@ const (
 	MSG_EVENT_ROOM
 	_
 	MSG_EVENT_PLAYLIST
-	_
+	MSG_EVENT_PLAYER
 	MSG_RESERVED
 )
 
@@ -46,8 +46,10 @@ type BMData interface {
 }
 
 type WSInfoJson struct {
-	ID int
-	ytdlp.InfoJson
+	ID             int
+	Cmd            string
+	MovedTo        int `json:",omitempty"`
+	ytdlp.InfoJson `json:",omitempty"`
 }
 
 type BroadcastMessage[T BMData] struct {
@@ -80,7 +82,7 @@ func (bm *BroadcastMessage[T]) DebugMode() bool {
 }
 
 type DMData interface {
-	[]byte | mq.TaskStatus
+	[]byte | mq.TaskStatus | MPStatus
 }
 
 type DirectMessage[T DMData] struct {

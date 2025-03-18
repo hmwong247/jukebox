@@ -4,6 +4,13 @@
 
 const client = {}
 
+const MSG_TYPE = Object.freeze({
+	EVENT_DEBUG: 0,
+	EVENT_ROOM: 1,
+	EVENT_PLAYLIST: 3,
+	EVENT_PLAYER: 4,
+})
+
 function connectWS(endpoint) {
 	client.ws = new WebSocket(endpoint)
 	// debug
@@ -20,12 +27,19 @@ function connectWS(endpoint) {
 			console.log("ws close: " + event)
 			autoResetPage()
 		}
+
 		client.ws.onmessage = (event) => {
 			console.log("ws recv: " + event.data)
 			const msg = JSON.parse(event.data)
 			switch (msg.MsgType) {
-				case 1: // broadcast
+				case MSG_TYPE.EVENT_ROOM:
 					updateRoomStatus(msg)
+					break
+				case MSG_TYPE.EVENT_PLAYLIST:
+					updatePlaylist(msg)
+					break
+				case MSG_TYPE.EVENT_PLAYER:
+					updateMP(msg)
 					break
 				default:
 					break
@@ -57,5 +71,29 @@ function updateRoomStatus(msg) {
 		}
 		default:
 			break
+	}
+}
+
+function updatePlaylist(msg) {
+	const cmd = msg.Data.Cmd
+	switch (cmd) {
+		case "add":
+			delete msg.Data['Cmd']
+			session.playlist.push(msg.Data)
+			swapPlaylist(msg.Data)
+			break
+		case "remove":
+			break
+		case "swap":
+			break
+		default:
+			break
+	}
+}
+
+function updateMP(msg) {
+	const data = msg.Data
+	if (data.OK == true) {
+		playAudio()
 	}
 }

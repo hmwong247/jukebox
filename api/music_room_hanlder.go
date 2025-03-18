@@ -9,7 +9,35 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
 )
+
+func getClient(sid uuid.UUID) *room.Client {
+	room.ClientMapMutex.RLock()
+	room.TokenMapMutex.RLock()
+
+	uid, ok := room.TokenMap[sid]
+	if !ok {
+		slog.Error("token not found", "sid", sid.String())
+		room.TokenMapMutex.RUnlock()
+		room.ClientMapMutex.RUnlock()
+		return nil
+	}
+	client, ok := room.ClientMap[*uid]
+	if !ok {
+		slog.Error("client not found", "uid", uid.String())
+		room.TokenMapMutex.RUnlock()
+		room.ClientMapMutex.RUnlock()
+		return nil
+	}
+
+	room.TokenMapMutex.RUnlock()
+	room.ClientMapMutex.RUnlock()
+
+	return client
+}
 
 // route: "POST /api/enqueue"
 func EnqueueURL(w http.ResponseWriter, r *http.Request) {
@@ -25,29 +53,11 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// find user
-	room.ClientMapMutex.RLock()
-	room.TokenMapMutex.RLock()
-
-	uid, ok := room.TokenMap[sid]
-	if !ok {
-		slog.Error("token not found", "sid", sid.String())
+	client := getClient(sid)
+	if client == nil {
 		http.Error(w, "", http.StatusBadRequest)
-		room.TokenMapMutex.RUnlock()
-		room.ClientMapMutex.RUnlock()
 		return
 	}
-	client, ok := room.ClientMap[*uid]
-	if !ok {
-		slog.Error("client not found", "uid", uid.String())
-		http.Error(w, "", http.StatusBadRequest)
-		room.TokenMapMutex.RUnlock()
-		room.ClientMapMutex.RUnlock()
-		return
-	}
-
-	room.TokenMapMutex.RUnlock()
-	room.ClientMapMutex.RUnlock()
 
 	// respond 202 just to tell the client that the server has recieved
 	// the request which is being processed, the result will be sent with websocket
@@ -141,6 +151,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 			// broadcast json to websocket
 			wsInfoJson := room.WSInfoJson{
 				ID:       node.ID,
+				Cmd:      "add",
 				InfoJson: req.Response,
 			}
 			msg := room.BroadcastMessage[room.WSInfoJson]{
@@ -152,7 +163,77 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 			client.Hub.BroadcastMsg(&msg)
 
 			// notify hub
-			client.Hub.Player.AddedSong <- struct{}{}
+			// client.Hub.Player.AddedSong <- struct{}{}
+			client.SignalMPAdd()
 		}
 	}()
+}
+
+// route: "GET /api/stream?sid="
+func StreamAudio(w http.ResponseWriter, r *http.Request) {
+	sid, err := decodeQueryID(r, "sid")
+	if err != nil {
+		http.Error(w, "", http.StatusBadRequest)
+		return
+	}
+	client := getClient(sid)
+	if client == nil {
+		http.Error(w, "", http.StatusBadRequest)
+		return
+	}
+	slog.Debug("[api] stream", "mp status", client.Hub.Player)
+
+	// byte serve the audio
+	reader := client.Hub.Player.AudioReader
+	if reader == nil {
+		slog.Warn("byte reader is nil", "hub id", client.Hub.B64ID(), "client id", client.B64ID())
+		http.Error(w, "", http.StatusNotFound)
+		return
+	}
+
+	http.ServeContent(w, r, "", time.Time{}, reader)
+}
+
+// route: "GET /api/streampreload?sid="
+func StreamPreload(w http.ResponseWriter, r *http.Request) {
+	sid, err := decodeQueryID(r, "sid")
+	if err != nil {
+		http.Error(w, "", http.StatusBadRequest)
+		return
+	}
+	client := getClient(sid)
+	if client == nil {
+		http.Error(w, "", http.StatusBadRequest)
+		return
+	}
+	slog.Debug("[api] streampreload", "mp status", client.Hub.Player)
+
+	// if client is host?
+	if client.Hub.Host.ID != client.ID {
+		http.Error(w, "", http.StatusForbidden)
+		return
+	}
+	client.SignalMPPreload()
+}
+
+// route: "GET /api/streamend?sid="
+func StreamEnd(w http.ResponseWriter, r *http.Request) {
+	sid, err := decodeQueryID(r, "sid")
+	if err != nil {
+		http.Error(w, "", http.StatusBadRequest)
+		return
+	}
+	client := getClient(sid)
+	if client == nil {
+		http.Error(w, "", http.StatusBadRequest)
+		return
+	}
+	slog.Debug("[api] streamend", "mp status", client.Hub.Player)
+
+	// if client is host?
+	if client.Hub.Host.ID != client.ID {
+		http.Error(w, "", http.StatusForbidden)
+		return
+	}
+	client.SignalMPNext()
 }

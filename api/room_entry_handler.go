@@ -133,6 +133,10 @@ func EnterLobby(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl.ExecuteTemplate(w, "room_status", session)
 
+	// render music player
+	tmpl = template.Must(template.ParseFiles("templates/MusicPlayer.html"))
+	tmpl.ExecuteTemplate(w, "music_player", nil)
+
 	// render music queue
 	tmpl = template.Must(template.ParseFiles("templates/CurrentQueue.html"))
 	tmpl.ExecuteTemplate(w, "room_queue", nil)

@@ -4,21 +4,28 @@ const session = {
 	roomID: "",
 	username: "user",
 	userList: {},
+	playlist: [],
 	audioArrBuf: {},
 	audioContext: new AudioContext(),
 }
 
-const API_PATH = {
+// const
+const API_PATH = Object.freeze({
+	// api
 	NEW_USER: "/api/new-user",
 	SESSION: "/api/session",
 	CREATE: "/api/create",
 	USERS: "/api/users",
 	ENQUEUE: "/api/enqueue",
+	STREAM: "/api/stream",
+	STREAM_END: "/api/streamend",
+	STREAM_PRELOAD: "api/streampreload",
+	// other
 	JOIN: "/join",
 	WEBSOCKET: "/ws",
 	LOBBY: "/lobby",
 	HOME: "/home",
-}
+})
 
 /**
  * init
@@ -277,16 +284,102 @@ function swapUserList(id, username, isAdd = true) {
 	}
 }
 
+// WIP
+// id is needed for remove, swap
+function swapPlaylist(infojson, shift = false) {
+	if(shift) {
+		htmx.find(`#pl${infojson.ID}`).remove()
+	}else {
+		const row = `<li id='pl${infojson.ID}'>${JSON.stringify(infojson)}</li>`
+		htmx.swap("#room_queue_list", row, { swapStyle: "beforeend" })
+	}
+}
+
 /**
  * web audio
  */
+
+const mp = {
+	/** @type {HTMLAudioElement} elem */
+	elem: null,
+	/** @type {Boolean} running */
+	running: false,
+	/** @type {AudioContext} ctx */
+	ctx: null,
+	/** @type {MediaStrema} stream */
+	stream: null,
+	currentSegment: null,
+	totalSegement: null,
+}
+
+function initMP() {
+	mp.elem = document.querySelector("#player")
+	mp.elem.removeEventListener('loadstart', mploadstart)
+	mp.elem.removeEventListener('timeupdate', mptimeupdate)
+	mp.elem.removeEventListener('ended', mpended)
+
+	mp.elem.src = API_PATH.STREAM + "?sid=" + session.sessionID
+	mp.elem.addEventListener('loadstart', mploadstart)
+}
+
+async function mploadstart() {
+	console.log(`loadstart`)
+	mp.elem.play()
+	mp.running = true
+}
+
+async function mptimeupdate() {
+	if (mp.elem.currentTime / mp.elem.duration >= 0.5 && session.playlist.length > 1) {
+		mp.elem.removeEventListener('timeupdate', mptimeupdate)
+
+		const url = API_PATH.STREAM_PRELOAD + "?sid=" + session.sessionID
+		const res = await fetch(url)
+		if (res.ok) {
+			// const s = await res.json()
+			// if (s == false) {
+
+			// }
+		}
+	}
+}
+
+async function mpended() {
+	console.log(`ended`)
+	mp.elem.pause()
+	mp.elem.currentTime = 0
+	const url = API_PATH.STREAM_END + "?sid=" + session.sessionID
+	const response = fetch(url)
+	// .then wait for server to reponse the next audio is ready if the queue is not size of 0
+	
+	const endedJson = session.playlist.shift()
+	swapPlaylist(endedJson, true)
+	
+	if (session.playlist.length > 0) {
+		// wait for 20ms to switch audio
+		// await new Promise(r => setTimeout(r, 20))
+		// if ok
+		playAudio()
+	}else {
+		mp.elem.pause()
+		mp.elem.removeAttribute("src")
+		mp.elem.load()
+		mp.running = false
+	}
+}
+
+
 async function playAudio() {
-	// Create a source node from the buffer
-	var source = session.audioContext.createBufferSource()
-	source.buffer = await session.audioContext.decodeAudioData(session.audioArrBuf)
-
-	// Connect to the final output node (the speakers)
-	source.connect(session.audioContext.destination)
-
-	source.start(0)
+	if(mp.elem && mp.running && mp.elem.buffered.length > 0 && mp.elem.currentTime != 0) {
+		// if (mp.elem.buffered.length > 0 && mp.elem.currentTime != 0 && !mp.elem.paused) return
+		return
+	}
+	// 	// implement a retry mechanism
+	// const url = API_PATH.STREAM_END + "?sid=" + session.sessionID
+	// const serverResp = await fetch(url, {method: "HEAD"}).then(r => r.ok)
+	// if(!serverResp) {
+	// 	return
+	// }
+	initMP()
+	mp.elem.addEventListener('timeupdate', mptimeupdate)
+	mp.elem.addEventListener('ended', mpended, {once: true})
 }
