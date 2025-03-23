@@ -3,9 +3,9 @@ package api
 import (
 	"context"
 	"log/slog"
-	"main/core/mq"
-	"main/core/room"
-	"main/core/ytdlp"
+	"main/internal/mq"
+	"main/internal/room"
+	"main/internal/ytdlp"
 	"net/http"
 	"strconv"
 	"strings"

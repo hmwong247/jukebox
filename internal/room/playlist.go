@@ -3,7 +3,7 @@ package room
 import (
 	"errors"
 	"fmt"
-	"main/core/ytdlp"
+	"main/internal/ytdlp"
 	"main/utils/linkedlist"
 	"sync"
 )

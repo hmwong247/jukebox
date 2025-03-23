@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"main/core/ytdlp"
+	"main/internal/ytdlp"
 	"net/http"
 	"sync"
 )

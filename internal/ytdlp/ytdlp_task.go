@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"main/core/mq"
+	"main/internal/mq"
 	"time"
 )
 

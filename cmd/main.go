@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"main/api"
-	"main/core/ytdlp"
+	"main/internal/ytdlp"
 )
 
 func main() {

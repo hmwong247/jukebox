@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"main/core/mq"
-	"main/core/ytdlp"
+	"main/internal/mq"
+	"main/internal/ytdlp"
 
 	"github.com/google/uuid"
 )

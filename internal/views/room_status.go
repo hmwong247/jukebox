@@ -1,6 +1,6 @@
 package views
 
-import "main/core/room"
+import "main/internal/room"
 
 type RoomStatus struct {
 	RoomID   string

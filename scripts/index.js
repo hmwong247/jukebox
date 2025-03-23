@@ -19,12 +19,13 @@ const API_PATH = Object.freeze({
 	ENQUEUE: "/api/enqueue",
 	STREAM: "/api/stream",
 	STREAM_END: "/api/streamend",
-	STREAM_PRELOAD: "api/streampreload",
+	STREAM_PRELOAD: "/api/streampreload",
 	// other
 	JOIN: "/join",
 	WEBSOCKET: "/ws",
 	LOBBY: "/lobby",
 	HOME: "/home",
+	_,
 })
 
 /**
@@ -287,9 +288,9 @@ function swapUserList(id, username, isAdd = true) {
 // WIP
 // id is needed for remove, swap
 function swapPlaylist(infojson, shift = false) {
-	if(shift) {
+	if (shift) {
 		htmx.find(`#pl${infojson.ID}`).remove()
-	}else {
+	} else {
 		const row = `<li id='pl${infojson.ID}'>${JSON.stringify(infojson)}</li>`
 		htmx.swap("#room_queue_list", row, { swapStyle: "beforeend" })
 	}
@@ -350,16 +351,16 @@ async function mpended() {
 	const url = API_PATH.STREAM_END + "?sid=" + session.sessionID
 	const response = fetch(url)
 	// .then wait for server to reponse the next audio is ready if the queue is not size of 0
-	
+
 	const endedJson = session.playlist.shift()
 	swapPlaylist(endedJson, true)
-	
+
 	if (session.playlist.length > 0) {
 		// wait for 20ms to switch audio
 		// await new Promise(r => setTimeout(r, 20))
 		// if ok
 		playAudio()
-	}else {
+	} else {
 		mp.elem.pause()
 		mp.elem.removeAttribute("src")
 		mp.elem.load()
@@ -369,7 +370,7 @@ async function mpended() {
 
 
 async function playAudio() {
-	if(mp.elem && mp.running && mp.elem.buffered.length > 0 && mp.elem.currentTime != 0) {
+	if (mp.elem && mp.running && mp.elem.buffered.length > 0 && mp.elem.currentTime != 0) {
 		// if (mp.elem.buffered.length > 0 && mp.elem.currentTime != 0 && !mp.elem.paused) return
 		return
 	}
@@ -381,5 +382,5 @@ async function playAudio() {
 	// }
 	initMP()
 	mp.elem.addEventListener('timeupdate', mptimeupdate)
-	mp.elem.addEventListener('ended', mpended, {once: true})
+	mp.elem.addEventListener('ended', mpended, { once: true })
 }

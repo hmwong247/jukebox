@@ -2,7 +2,7 @@ package api
 
 import (
 	"log/slog"
-	"main/core/room"
+	"main/internal/room"
 	"net/http"
 	"time"
 )
