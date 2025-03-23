@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// All message sent via the websocket hub MUST implement this interface
 type WSMessage interface {
 	Json() ([]byte, error)
 	Client() *Client
@@ -17,16 +18,12 @@ type WSMessage interface {
 }
 
 // MsgType is still needed for frontend
-// type 0: debug
-// type 1: room entry event
-// type 3: playlist event
-// type 5: reserved
 type MsgType int
 
 const (
 	MSG_DEBUG MsgType = iota
 	MSG_EVENT_ROOM
-	_
+	MSG_EVENT_PEER
 	MSG_EVENT_PLAYLIST
 	MSG_EVENT_PLAYER
 	MSG_RESERVED

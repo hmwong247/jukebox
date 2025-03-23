@@ -68,7 +68,7 @@ func (c *Client) Read() {
 
 		msgStr := string(msgRead)
 		msg := BroadcastMessage[Event]{
-			MsgType:  MSG_DEBUG,
+			MsgType:  MSG_EVENT_PEER,
 			UID:      c.ID.String(),
 			Username: c.Name,
 			Data:     Event(msgStr),

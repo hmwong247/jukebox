@@ -7,6 +7,7 @@ const client = {}
 const MSG_TYPE = Object.freeze({
 	EVENT_DEBUG: 0,
 	EVENT_ROOM: 1,
+	EVENT_PEER: 2,
 	EVENT_PLAYLIST: 3,
 	EVENT_PLAYER: 4,
 })
@@ -17,6 +18,7 @@ function connectWS(endpoint) {
 	return new Promise((resolve, reject) => {
 		client.ws.onopen = (event) => {
 			console.log("ws open: " + event)
+			newPeerInterface()
 			resolve()
 		}
 		client.ws.onerror = (event) => {
@@ -34,6 +36,9 @@ function connectWS(endpoint) {
 			switch (msg.MsgType) {
 				case MSG_TYPE.EVENT_ROOM:
 					updateRoomStatus(msg)
+					break
+				case MSG_TYPE.EVENT_PEER:
+					updatePeerConnection(msg)
 					break
 				case MSG_TYPE.EVENT_PLAYLIST:
 					updatePlaylist(msg)
@@ -95,5 +100,12 @@ function updateMP(msg) {
 	const data = msg.Data
 	if (data.OK == true) {
 		playAudio()
+	}
+}
+
+function updatePeerConnection(msg) {
+	const pid = JSON.parse(msg.Data).pid
+	if (pid != null) {
+		addPeer(pid)
 	}
 }

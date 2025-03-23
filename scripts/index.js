@@ -5,8 +5,6 @@ const session = {
 	username: "user",
 	userList: {},
 	playlist: [],
-	audioArrBuf: {},
-	audioContext: new AudioContext(),
 }
 
 // const
@@ -25,7 +23,6 @@ const API_PATH = Object.freeze({
 	WEBSOCKET: "/ws",
 	LOBBY: "/lobby",
 	HOME: "/home",
-	_,
 })
 
 /**

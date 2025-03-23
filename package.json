@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "htmx.org": "^2.0.4"
+    "htmx.org": "^2.0.4",
+    "peerjs": "^1.5.4"
   }
 }
