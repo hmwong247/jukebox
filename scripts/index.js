@@ -5,6 +5,8 @@ const session = {
 	username: "user",
 	userList: {},
 	playlist: [],
+	userID: window.localStorage.getItem("userID"),
+	hostID: "",
 }
 
 // const

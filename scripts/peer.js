@@ -6,18 +6,18 @@ const PEER_CONFIG = Object.freeze({
 })
 
 /** @type {Peer} localCon */
-var localConn
+var conn
 var peers = []
 
 function newPeerInterface() {
 	const uid = window.localStorage.getItem("userID")
-	localConn = new Peer(uid, PEER_CONFIG)
+	conn = new Peer(uid, PEER_CONFIG)
 
-	localConn.on('error', err => {
+	conn.on('error', err => {
 		console.warn(`localConn error: ${err}`)
 	})
 
-	localConn.on('open', () => {
+	conn.on('open', () => {
 		const uid = window.localStorage.getItem("userID")
 		const payload = {
 			pid: uid,
@@ -25,14 +25,14 @@ function newPeerInterface() {
 		client.ws.send(JSON.stringify(payload))
 	})
 
-	localConn.on('connection', peerConn => {
+	conn.on('connection', peerConn => {
 		peerConn.on('error', err => {
 			console.warn(`peerConn error: ${err}`)
 		})
 
 		peerConn.on('open', () => {
 			peers.push(peerConn)
-			peerConn.send(`hi from ${localConn.id}`)
+			peerConn.send(`hi from ${conn.id}`)
 		})
 
 		peerConn.on('data', (data) => {
@@ -47,11 +47,11 @@ function newPeerInterface() {
 }
 
 function addPeer(id) {
-	if (id === localConn.id) {
+	if (id === conn.id) {
 		console.log(`same id: ${id}`)
 		return
 	}
-	const peerConn = localConn.connect(id)
+	const peerConn = conn.connect(id)
 
 	peerConn.on('error', err => {
 		console.warn(`peerConn error: ${err}`)
@@ -59,7 +59,7 @@ function addPeer(id) {
 
 	peerConn.on('open', () => {
 		peers.push(peerConn)
-		peerConn.send(`hi from ${localConn.id}`)
+		peerConn.send(`hi from ${conn.id}`)
 	})
 
 	peerConn.on('data', (data) => {

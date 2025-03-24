@@ -18,7 +18,6 @@ function connectWS(endpoint) {
 	return new Promise((resolve, reject) => {
 		client.ws.onopen = (event) => {
 			console.log("ws open: " + event)
-			newPeerInterface()
 			resolve()
 		}
 		client.ws.onerror = (event) => {
@@ -36,9 +35,10 @@ function connectWS(endpoint) {
 			switch (msg.MsgType) {
 				case MSG_TYPE.EVENT_ROOM:
 					updateRoomStatus(msg)
+					updatePeerConnection(msg)
 					break
 				case MSG_TYPE.EVENT_PEER:
-					updatePeerConnection(msg)
+					answerPeer(msg)
 					break
 				case MSG_TYPE.EVENT_PLAYLIST:
 					updatePlaylist(msg)
@@ -71,6 +71,7 @@ function updateRoomStatus(msg) {
 			break
 		}
 		case "host": {
+			session.hostID = msg.UID
 			swapHost(msg.Username)
 			break
 		}
@@ -104,8 +105,10 @@ function updateMP(msg) {
 }
 
 function updatePeerConnection(msg) {
-	const pid = JSON.parse(msg.Data).pid
-	if (pid != null) {
-		addPeer(pid)
+	const evt = msg.Data
+	if (evt === "join") {
+		addPeer(msg)
+	} else if (evt === "left") {
+		removePeer(msg)
 	}
 }

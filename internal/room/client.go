@@ -65,15 +65,41 @@ func (c *Client) Read() {
 			return
 		}
 		// msg = bytes.TrimSpace(bytes.Replace(msg, "\n", " ", -1))
+		// msgStr := string(msgRead)
 
-		msgStr := string(msgRead)
-		msg := BroadcastMessage[Event]{
+		// var rawMsg RawPeerSignalMessage
+		// err = nil
+		// err = json.Unmarshal(msgRead, &rawMsg)
+		// if err != nil {
+		// 	slog.Error("[client] json error", "err", err)
+		// 	continue
+		// }
+		// if rawMsg.To != uuid.Nil.String() {
+		// 	msg := PeerDirectMessage[string]{
+		// 		MsgType:  MSG_EVENT_PEER,
+		// 		UID:      c.ID.String(),
+		// 		Username: c.Name,
+		// 		To:       rawMsg.To,
+		// 		Data:     string(msgRead),
+		// 	}
+		// 	go c.Hub.SignalMsg(&msg)
+		// } else {
+		// 	msg := PeerMessage[string]{
+		// 		MsgType:  MSG_EVENT_PEER,
+		// 		UID:      c.ID.String(),
+		// 		Username: c.Name,
+		// 		Data:     string(msgRead),
+		// 	}
+		// 	go c.Hub.SignalMsg(&msg)
+		// }
+
+		msg := PeerMessage[string]{
 			MsgType:  MSG_EVENT_PEER,
 			UID:      c.ID.String(),
 			Username: c.Name,
-			Data:     Event(msgStr),
+			Data:     string(msgRead),
 		}
-		go c.Hub.BroadcastMsg(&msg)
+		go c.Hub.SignalMsg(&msg)
 	}
 }
 
@@ -127,4 +153,9 @@ func (c *Client) SignalMPNext() {
 
 func (c *Client) SignalMPPreload() {
 	c.Hub.Player.Preload <- struct{}{}
+}
+
+type RawPeerSignalMessage struct {
+	To   string
+	Data string
 }

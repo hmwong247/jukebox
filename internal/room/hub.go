@@ -58,18 +58,11 @@ type Hub struct {
 	// message channel
 	broadcast chan WSMessage
 	direct    chan WSMessage
-	// roomEvt     chan *RoomEventMessage
-	// playlistEvt chan *PlaylistEventMessage
+	peer      chan WSMessage
 }
 
 func CreateHub(id uuid.UUID) *Hub {
 	clients := make(map[*Client]int)
-	// mq, err := mq.NewWorkerPool(1, 1)
-	// if err != nil {
-	// 	slog.Error("task queue err", "err", err)
-	// 	return &Hub{}
-	// }
-
 	// // the first client is the host by default
 	// clients[client] = 7
 
@@ -85,8 +78,7 @@ func CreateHub(id uuid.UUID) *Hub {
 
 		broadcast: make(chan WSMessage),
 		direct:    make(chan WSMessage),
-		// roomEvt:     make(chan *RoomEventMessage),
-		// playlistEvt: make(chan *PlaylistEventMessage),
+		peer:      make(chan WSMessage),
 	}
 }
 
@@ -106,6 +98,10 @@ func (h *Hub) Run() {
 
 	for {
 		select {
+		case <-h.Destroy:
+			slog.Info("[hub] recieved destroy")
+			return
+
 		case client := <-h.Register:
 			h.register(client)
 
@@ -139,7 +135,7 @@ func (h *Hub) Run() {
 			if msg.DebugMode() {
 				slog.Debug("[hub] ws msg", "msg", msg)
 			}
-			if client := msg.Client(); client != nil {
+			if client := msg.Reciever(); client != nil {
 				select {
 				case client.Send <- msgJson:
 				default:
@@ -148,10 +144,42 @@ func (h *Hub) Run() {
 				}
 			}
 
-		case <-h.Destroy:
-			slog.Info("[hub] recieved destroy")
-			return
+		case msg := <-h.peer:
+			msgJson, err := msg.Json()
+			if err != nil {
+				slog.Error("[hub] boardcast json err", "err", err)
+				continue
+			}
+			if msg.DebugMode() {
+				slog.Debug("[hub] ws msg", "msg", msg)
+			}
 
+			reciever := msg.Reciever()
+			if reciever != nil {
+				select {
+				case reciever.Send <- msgJson:
+				default:
+					close(reciever.Send)
+					delete(h.Clients, reciever)
+				}
+			} else {
+				sender := msg.Sender()
+				if sender == nil {
+					continue
+				}
+				for client := range h.Clients {
+					if client != sender {
+						select {
+						case client.Send <- msgJson:
+						default:
+							close(client.Send)
+							delete(h.Clients, client)
+						}
+					}
+				}
+			}
+
+			// end of select
 		}
 	}
 }
@@ -187,6 +215,16 @@ func (h *Hub) unregister(client *Client) {
 		close(client.Send)
 		// check if hub should be closed
 		if len(h.Clients) == 0 {
+			go func() {
+				select {
+				case <-h.Destroy:
+					// closed
+					slog.Debug("timeout destroy closed")
+					return
+				default:
+				}
+				h.Destroy <- struct{}{}
+			}()
 			base64rid := base64.RawURLEncoding.EncodeToString(h.ID[:])
 			slog.Info("ws hub closed: no client in hub", "id", base64rid)
 
@@ -276,6 +314,19 @@ func (h *Hub) DirectMsg(msg WSMessage) {
 		default:
 		}
 		h.direct <- msg
+		return
+	}
+}
+
+func (h *Hub) SignalMsg(msg WSMessage) {
+	if len(h.Clients) > 0 {
+		select {
+		case <-h.Destroy:
+			slog.Debug("signal message destroy closed")
+			return
+		default:
+		}
+		h.peer <- msg
 		return
 	}
 }
