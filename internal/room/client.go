@@ -1,6 +1,7 @@
 package room
 
 import (
+	"encoding/json"
 	"log/slog"
 	"time"
 
@@ -67,39 +68,39 @@ func (c *Client) Read() {
 		// msg = bytes.TrimSpace(bytes.Replace(msg, "\n", " ", -1))
 		// msgStr := string(msgRead)
 
-		// var rawMsg RawPeerSignalMessage
-		// err = nil
-		// err = json.Unmarshal(msgRead, &rawMsg)
-		// if err != nil {
-		// 	slog.Error("[client] json error", "err", err)
-		// 	continue
-		// }
-		// if rawMsg.To != uuid.Nil.String() {
-		// 	msg := PeerDirectMessage[string]{
-		// 		MsgType:  MSG_EVENT_PEER,
-		// 		UID:      c.ID.String(),
-		// 		Username: c.Name,
-		// 		To:       rawMsg.To,
-		// 		Data:     string(msgRead),
-		// 	}
-		// 	go c.Hub.SignalMsg(&msg)
-		// } else {
-		// 	msg := PeerMessage[string]{
-		// 		MsgType:  MSG_EVENT_PEER,
-		// 		UID:      c.ID.String(),
-		// 		Username: c.Name,
-		// 		Data:     string(msgRead),
-		// 	}
-		// 	go c.Hub.SignalMsg(&msg)
-		// }
-
-		msg := PeerMessage[string]{
-			MsgType:  MSG_EVENT_PEER,
-			UID:      c.ID.String(),
-			Username: c.Name,
-			Data:     string(msgRead),
+		var rawMsg RawPeerSignalMessage
+		err = nil
+		err = json.Unmarshal(msgRead, &rawMsg)
+		if err != nil {
+			slog.Error("[client] json error", "err", err)
+			continue
 		}
-		go c.Hub.SignalMsg(&msg)
+		if rawMsg.To != uuid.Nil.String() {
+			msg := PeerDirectMessage[string]{
+				MsgType:  MSG_EVENT_PEER,
+				UID:      c.ID.String(),
+				Username: c.Name,
+				To:       rawMsg.To,
+				Data:     string(msgRead),
+			}
+			go c.Hub.SignalMsg(&msg)
+		} else {
+			msg := PeerMessage[string]{
+				MsgType:  MSG_EVENT_PEER,
+				UID:      c.ID.String(),
+				Username: c.Name,
+				Data:     string(msgRead),
+			}
+			go c.Hub.SignalMsg(&msg)
+		}
+
+		// msg := PeerMessage[string]{
+		// 	MsgType:  MSG_EVENT_PEER,
+		// 	UID:      c.ID.String(),
+		// 	Username: c.Name,
+		// 	Data:     string(msgRead),
+		// }
+		// go c.Hub.SignalMsg(&msg)
 	}
 }
 
@@ -157,5 +158,5 @@ func (c *Client) SignalMPPreload() {
 
 type RawPeerSignalMessage struct {
 	To   string
-	Data string
+	Data interface{} // don't care
 }

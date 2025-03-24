@@ -20,7 +20,6 @@ function addPeer(msg) {
 
 	conn.on('signal', data => {
 		console.log(`addPeer signal, at ${session.userID}: ${JSON.stringify(data)}`)
-		//client.ws.send(JSON.stringify(data))
 		const dm = {
 			To: msg.UID,
 			Data: data,
@@ -49,40 +48,38 @@ function removePeer(msg) {
 function answerPeer(msg) {
 	const from = msg.UID
 	const to = msg.Data.To
-	if (peers[from]) {
-		console.log(`peer already connected`)
-		return
+	if (!peers[from]) {
+		conn = new SimplePeer({ initiator: false, trickle: false })
+
+		conn.on('error', err => {
+			console.log(`answerPeer error, at ${session.userID}: ${err}`)
+		})
+
+		conn.on('signal', data => {
+			console.log(`answerPeer signal, at ${session.userID}: ${JSON.stringify(data)}`)
+
+			const dm = {
+				To: from,
+				Data: data,
+			}
+			client.ws.send(JSON.stringify(dm))
+		})
+
+		conn.on('connect', () => {
+			console.log(`answerPeer connect, at ${session.userID}`)
+		})
+
+		conn.on('data', data => {
+			console.log(`answerPeerdata, at ${session.userID}: ${data}`)
+		})
+
+		peers[from] = conn
+		console.log(conn)
 	}
 	//if (to !== session.userID) {
 	//	console.log(`peer target is not self`)
 	//	return
 	//}
 
-	conn = new SimplePeer({ initiator: false, trickle: false })
-
-	conn.on('error', err => {
-		console.log(`answerPeer error, at ${session.userID}: ${err}`)
-	})
-
-	conn.on('signal', data => {
-		console.log(`answerPeer signal, at ${session.userID}: ${JSON.stringify(data)}`)
-
-		const dm = {
-			To: from,
-			Data: data,
-		}
-		client.ws.send(JSON.stringify(dm))
-	})
-
-	conn.on('connect', () => {
-		console.log(`answerPeer connect, at ${session.userID}`)
-	})
-
-	conn.on('data', data => {
-		console.log(`answerPeerdata, at ${session.userID}: ${data}`)
-	})
-
-	conn.signal(JSON.parse(msg.Data).Data)
-	peers[msg.UID] = conn
-	console.log(conn)
+	peers[from].signal(JSON.parse(msg.Data).Data)
 }
