@@ -148,11 +148,8 @@ func EnterLobby(w http.ResponseWriter, r *http.Request) {
 
 // route: "GET /api/new-user"
 func HandleNewUser(w http.ResponseWriter, r *http.Request) {
-	userID := uuid.New()
-	userIDByte := userID[:]
-	encodedBase64 := base64.RawURLEncoding.EncodeToString(userIDByte)
-	// slog.Debug("GET /new-user", "base64", encodedBase64)
-	w.Write([]byte(encodedBase64))
+	userID := uuid.New().String()
+	w.Write([]byte(userID))
 }
 
 // route: "POST /api/session"
@@ -164,8 +161,7 @@ func HandleNewSession(w http.ResponseWriter, r *http.Request) {
 	pUID := r.PostFormValue("user_id")
 
 	// never trust the client
-	decodedUID, err := base64.RawURLEncoding.DecodeString(pUID)
-	uid, err := uuid.FromBytes(decodedUID)
+	uid, err := uuid.Parse(pUID)
 	if err != nil {
 		slog.Info("Invalid user UUID from client:", "status", http.StatusBadRequest, "err", err)
 		http.Error(w, "", http.StatusBadRequest)
