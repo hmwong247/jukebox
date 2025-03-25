@@ -7,7 +7,19 @@
 var localConn
 var peers = {}
 
+const PEER_CMD = Object.freeze({
+	INIT: "init",
+	PLAY: "play",
+	PAUSE: "pause",
+	SKIP: "skip",
+})
 
+function removePeer(msg) {
+	if (peers[msg.UID]) {
+		peers[msg.UID].destroy();
+		delete peers[msg.UID];
+	}
+}
 
 function addPeer(msg) {
 	if (msg.UID === session.userID) { return }
@@ -16,10 +28,12 @@ function addPeer(msg) {
 
 	conn.on('error', err => {
 		console.log(`addPeer error, at ${session.userID}: ${err}`)
+
+		if (peers[msg.UID]) { delete peers[msg.UID] }
 	})
 
 	conn.on('signal', data => {
-		console.log(`addPeer signal, at ${session.userID}: ${JSON.stringify(data)}`)
+		//console.log(`addPeer signal, at ${session.userID}: ${JSON.stringify(data)}`)
 		const dm = {
 			To: msg.UID,
 			Data: data,
@@ -31,18 +45,9 @@ function addPeer(msg) {
 		console.log(`addPeer connect, at ${session.userID}`)
 	})
 
-	conn.on('data', data => {
-		console.log(`addPeer data, at ${session.userID}: ${data}`)
-	})
+	conn.on('data', data => onpeerdata(data))
 
 	peers[msg.UID] = conn
-}
-
-function removePeer(msg) {
-	if (peers[msg.UID]) {
-		peers[msg.UID].destroy();
-		delete peers[msg.UID];
-	}
 }
 
 function answerPeer(msg) {
@@ -53,10 +58,12 @@ function answerPeer(msg) {
 
 		conn.on('error', err => {
 			console.log(`answerPeer error, at ${session.userID}: ${err}`)
+
+			if (peers[from]) { delete peers[from] }
 		})
 
 		conn.on('signal', data => {
-			console.log(`answerPeer signal, at ${session.userID}: ${JSON.stringify(data)}`)
+			//console.log(`answerPeer signal, at ${session.userID}: ${JSON.stringify(data)}`)
 
 			const dm = {
 				To: from,
@@ -69,17 +76,40 @@ function answerPeer(msg) {
 			console.log(`answerPeer connect, at ${session.userID}`)
 		})
 
-		conn.on('data', data => {
-			console.log(`answerPeerdata, at ${session.userID}: ${data}`)
-		})
+		conn.on('data', data => onpeerdata(data))
 
 		peers[from] = conn
 		console.log(conn)
 	}
-	//if (to !== session.userID) {
-	//	console.log(`peer target is not self`)
-	//	return
-	//}
 
 	peers[from].signal(JSON.parse(msg.Data).Data)
+}
+
+function startSyncPeer() {
+	for (uuid in peers) {
+		const msg = { from: session.userID, payload: PEER_CMD.INIT }
+		peers[uuid].send(JSON.stringify(msg))
+	}
+}
+
+/** @param {{to: string, payload: string}} msg */
+function onpeerdata(msg) {
+	console.log(`onpeerdata, at ${session.userID}: ` + msg)
+	const data = JSON.parse(msg.toString())
+	const from = data.from
+	if (from === session.hostID) {
+		const payload = data.payload
+		console.log(`payload: ${payload}`)
+		switch (payload) {
+			case PEER_CMD.INIT:
+				playAudioAsPeer()
+				break
+			case PEER_CMD.PLAY:
+				break
+			case PEER_CMD.PAUSE:
+				break
+			case PEER_CMD.STOP:
+				break
+		}
+	}
 }

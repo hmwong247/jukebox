@@ -17,20 +17,20 @@ function connectWS(endpoint) {
 	// debug
 	return new Promise((resolve, reject) => {
 		client.ws.onopen = (event) => {
-			console.log("ws open: " + event)
+			console.log("ws open: " + JSON.stringify(event))
 			resolve()
 		}
 		client.ws.onerror = (event) => {
-			console.log("ws err: " + event)
+			console.log("ws err: " + JSON.stringify(event))
 			reject()
 		}
 		client.ws.onclose = (event) => {
-			console.log("ws close: " + event)
+			console.log("ws close: " + JSON.stringify(event))
 			autoResetPage()
 		}
 
 		client.ws.onmessage = (event) => {
-			console.log("ws recv: " + event.data)
+			//console.log("ws recv: " + event.data)
 			const msg = JSON.parse(event.data)
 			switch (msg.MsgType) {
 				case MSG_TYPE.EVENT_ROOM:
@@ -57,7 +57,7 @@ function updateRoomStatus(msg) {
 	const payload = msg.Data
 	switch (payload) {
 		case "join": {
-			session.userList[msg.UID] = msg.Username
+			session.userList[msg.UID] = { name: msg.Username, host: false }
 
 			swapRoomCapacity(Object.keys(session.userList).length)
 			swapUserList(msg.UID, msg.Username)
@@ -72,6 +72,7 @@ function updateRoomStatus(msg) {
 		}
 		case "host": {
 			session.hostID = msg.UID
+			session.userList[msg.UID].host = true
 			swapHost(msg.Username)
 			break
 		}

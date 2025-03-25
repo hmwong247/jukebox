@@ -247,6 +247,11 @@ func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(base64RID))
 }
 
+type userJson struct {
+	Name string `json:"name"`
+	Host bool   `json:"host"`
+}
+
 // route: "GET /api/users?sid="
 func UserList(w http.ResponseWriter, r *http.Request) {
 	room.ClientMapMutex.RLock()
@@ -277,9 +282,17 @@ func UserList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userlist := make(map[string]string)
+	userlist := make(map[string]userJson)
 	for c := range client.Hub.Clients {
-		userlist[c.ID.String()] = c.Name
+		isHost := false
+		if c.ID == c.Hub.Host.ID {
+			isHost = true
+		}
+		userjson := userJson{
+			Name: c.Name,
+			Host: isHost,
+		}
+		userlist[c.ID.String()] = userjson
 	}
 
 	json, err := json.Marshal(userlist)

@@ -5,7 +5,7 @@ const session = {
 	username: "user",
 	userList: {},
 	playlist: [],
-	userID: window.localStorage.getItem("userID"),
+	userID: "",
 	hostID: "",
 }
 
@@ -56,6 +56,7 @@ async function fetchUserID() {
 		})
 		window.localStorage.setItem("userID", uid)
 	}
+	session.userID = window.localStorage.getItem("userID")
 }
 
 async function fetchSessionID(form) {
@@ -165,6 +166,7 @@ async function requestNewRoom(event, form) {
 	swapInviteLink(document.querySelector("#room_id").innerHTML)
 
 	fetchUserList().then(data => session.userList = data)
+	session.hostID = session.userID
 }
 
 async function requestJoinRoom(event, form) {
@@ -204,7 +206,14 @@ async function requestJoinRoom(event, form) {
 	swapUsername(session.username)
 	swapInviteLink(document.querySelector("#room_id").innerHTML)
 
-	fetchUserList().then(data => session.userList = data)
+	fetchUserList().then(data => session.userList = data).then(() => {
+		for (id in session.userList) {
+			if (session.userList[id].host === true) {
+				session.hostID = id
+				break
+			}
+		}
+	})
 }
 
 async function submitURL(event, form) {
@@ -367,6 +376,25 @@ async function mpended() {
 	}
 }
 
+async function peermpended() {
+	console.log(`ended`)
+	mp.elem.pause()
+	mp.elem.currentTime = 0
+	const endedJson = session.playlist.shift()
+	swapPlaylist(endedJson, true)
+
+	if (session.playlist.length > 0) {
+		// wait for 20ms to switch audio
+		// await new Promise(r => setTimeout(r, 20))
+		// if ok
+		playAudioAsPeer()
+	} else {
+		mp.elem.pause()
+		mp.elem.removeAttribute("src")
+		mp.elem.load()
+		mp.running = false
+	}
+}
 
 async function playAudio() {
 	if (mp.elem && mp.running && mp.elem.buffered.length > 0 && mp.elem.currentTime != 0) {
@@ -379,7 +407,25 @@ async function playAudio() {
 	// if(!serverResp) {
 	// 	return
 	// }
+	startSyncPeer()
 	initMP()
+	// host specific event listener
+	mp.elem.addEventListener('loadstart', mploadstart) // host will init the play
 	mp.elem.addEventListener('timeupdate', mptimeupdate)
 	mp.elem.addEventListener('ended', mpended, { once: true })
+}
+
+async function playAudioAsPeer() {
+	if (mp.elem && mp.running && mp.elem.buffered.length > 0 && mp.elem.currentTime != 0) {
+		// if (mp.elem.buffered.length > 0 && mp.elem.currentTime != 0 && !mp.elem.paused) return
+		return
+	}
+	// 	// implement a retry mechanism
+	// const url = API_PATH.STREAM_END + "?sid=" + session.sessionID
+	// const serverResp = await fetch(url, {method: "HEAD"}).then(r => r.ok)
+	// if(!serverResp) {
+	// 	return
+	// }
+	initMP()
+	mp.elem.addEventListener('ended', peermpended, { once: true })
 }
