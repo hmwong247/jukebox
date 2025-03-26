@@ -11,8 +11,8 @@ import (
 
 const (
 	// buffer size
-	READSIZE  = 1024
-	WRITESIZE = 1024
+	READSIZE  = 1024 * 8
+	WRITESIZE = 1024 * 8
 
 	// ping pong message time
 	writeWait = 10 * time.Second
@@ -61,8 +61,9 @@ func (c *Client) Read() {
 		_, msgRead, err := c.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				slog.Error("ws client read error", "err", err)
+				slog.Error("ws client read unexpected error", "err", err)
 			}
+			slog.Error("ws client read error", "err", err)
 			return
 		}
 		// msg = bytes.TrimSpace(bytes.Replace(msg, "\n", " ", -1))

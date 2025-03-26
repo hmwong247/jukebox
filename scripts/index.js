@@ -309,16 +309,16 @@ function swapPlaylist(infojson, shift = false) {
  */
 
 const mp = {
-	/** @type {HTMLAudioElement} elem */
+	/** @type {HTMLAudioElement | HTMLMediaElement} elem */
 	elem: null,
+	/** @type {HTMLAudioElement} mozElem */
+	mozElem: null,
 	/** @type {Boolean} running */
 	running: false,
-	/** @type {AudioContext} ctx */
-	ctx: null,
-	/** @type {MediaStrema} stream */
-	stream: null,
-	currentSegment: null,
-	totalSegement: null,
+	/** @type {MediaStream} localStream - captured locally */
+	localStream: null,
+	/** @type {MediaStream} remoteStream - streamed from peer */
+	remoteStream: null,
 }
 
 function initMP() {
@@ -331,8 +331,37 @@ function initMP() {
 	mp.elem.addEventListener('loadstart', mploadstart)
 }
 
+/** 
+ * init the MediaStream for the host
+ */
+function lazyInitMPStream() {
+	if (!mp.elem) {
+		mp.elem = document.querySelector("#player")
+		if (!mp.localStream) {
+			mp.localStream = new MediaStream()
+		}
+	}
+}
+
+async function mpcanplay() {
+	lazyInitMPStream()
+	let stream
+	if ("mozCaptureStream" in mp.elem) {
+		stream = mp.elem.mozCaptureStream()
+		if (!mp.mozElem) {
+			mp.mozElem = new Audio()
+		}
+	} else {
+		stream = mp.elem.captureStream()
+	}
+	const track = stream.getTracks()[0]
+	startSyncPeer(mp.localStream, track)
+	mp.localStream.addTrack(track)
+}
+
 async function mploadstart() {
 	console.log(`loadstart`)
+	mp.elem.addEventListener('canplay', mpcanplay, { once: true })
 	mp.elem.play()
 	mp.running = true
 }
@@ -384,9 +413,6 @@ async function peermpended() {
 	swapPlaylist(endedJson, true)
 
 	if (session.playlist.length > 0) {
-		// wait for 20ms to switch audio
-		// await new Promise(r => setTimeout(r, 20))
-		// if ok
 		playAudioAsPeer()
 	} else {
 		mp.elem.pause()
@@ -407,7 +433,6 @@ async function playAudio() {
 	// if(!serverResp) {
 	// 	return
 	// }
-	startSyncPeer()
 	initMP()
 	// host specific event listener
 	mp.elem.addEventListener('loadstart', mploadstart) // host will init the play
