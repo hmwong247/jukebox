@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"main/internal/room"
-	"main/internal/views"
 	"net/http"
 	"strings"
 	"text/template"
@@ -71,11 +70,13 @@ func HandleRoot(w http.ResponseWriter, r *http.Request) {
 
 // route: "GET /home"
 func HandleDefault(w http.ResponseWriter, r *http.Request) {
-	tmpl := template.Must(template.ParseFiles("statics/index.html", "templates/forms/user_profile.html"))
+	// tmpl := template.Must(template.ParseFiles("statics/index.html", "templates/forms/user_profile.html"))
+	// tmpl.Execute(w, nil)
+	tmpl := template.Must(template.ParseFiles("app/dist/index.html"))
 	tmpl.Execute(w, nil)
 }
 
-// route: "GET /join"
+// route: "GET /join?rid="
 func HandleJoin(w http.ResponseWriter, r *http.Request) {
 	rid, err := decodeQueryID(r, "rid")
 	if err != nil {
@@ -88,58 +89,8 @@ func HandleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl := template.Must(template.ParseFiles("statics/join.html", "templates/forms/user_profile.html"))
+	tmpl := template.Must(template.ParseFiles("app/dist/index.html"))
 	tmpl.Execute(w, nil)
-}
-
-// route: GET /lobby?sid=
-func EnterLobby(w http.ResponseWriter, r *http.Request) {
-	room.ClientMapMutex.RLock()
-	room.TokenMapMutex.RLock()
-	defer func() {
-		room.TokenMapMutex.RUnlock()
-		room.ClientMapMutex.RUnlock()
-	}()
-
-	sid, err := decodeQueryID(r, "sid")
-	if err != nil {
-		slog.Info("Trying to enter lobby with invalid session UUID", "status", http.StatusForbidden)
-		http.Error(w, "", http.StatusBadRequest)
-		return
-	}
-	var client *room.Client
-	if uid, ok := room.TokenMap[sid]; ok {
-		if _client, ok := room.ClientMap[*uid]; ok {
-			client = _client
-		} else {
-			slog.Info("client not found", "status", http.StatusInternalServerError, "uid", _client.ID.String())
-			http.Error(w, "", http.StatusForbidden)
-			return
-		}
-	} else {
-		slog.Info("token not found", "status", http.StatusForbidden, "sid", sid.String())
-		http.Error(w, "", http.StatusForbidden)
-		return
-	}
-
-	// render room status
-	base64RID := base64.RawURLEncoding.EncodeToString(client.Hub.ID[:])
-	tmpl := template.Must(template.ParseGlob("templates/CurrentRoom.html"))
-	session := views.RoomStatus{
-		RoomID:   base64RID,
-		Host:     client.Hub.Host.Name,
-		Capacity: len(client.Hub.Clients),
-		UserList: client.Hub.Clients,
-	}
-	tmpl.ExecuteTemplate(w, "room_status", session)
-
-	// render music player
-	tmpl = template.Must(template.ParseFiles("templates/MusicPlayer.html"))
-	tmpl.ExecuteTemplate(w, "music_player", nil)
-
-	// render music queue
-	tmpl = template.Must(template.ParseFiles("templates/CurrentQueue.html"))
-	tmpl.ExecuteTemplate(w, "room_queue", nil)
 }
 
 /*

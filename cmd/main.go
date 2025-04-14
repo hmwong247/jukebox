@@ -30,19 +30,20 @@ func main() {
 	mux := http.NewServeMux()
 
 	// handle and serve static files
-	jsFS := http.FileServer(http.Dir("scripts"))
-	mux.Handle("GET /scripts/", http.StripPrefix("/scripts/", jsFS))
-	nodeFS := http.FileServer(http.Dir("node_modules"))
-	mux.Handle("GET /node_modules/", http.StripPrefix("/node_modules/", nodeFS))
-	styleFS := http.FileServer(http.Dir("styles"))
-	mux.Handle("GET /styles/", http.StripPrefix("/styles/", styleFS))
+	// jsFS := http.FileServer(http.Dir("scripts"))
+	// mux.Handle("GET /scripts/", http.StripPrefix("/scripts/", jsFS))
+	// nodeFS := http.FileServer(http.Dir("node_modules"))
+	// mux.Handle("GET /node_modules/", http.StripPrefix("/node_modules/", nodeFS))
+	// styleFS := http.FileServer(http.Dir("styles"))
+	// mux.Handle("GET /styles/", http.StripPrefix("/styles/", styleFS))
+	appFS := http.FileServer(http.Dir("app/dist"))
+	mux.Handle("GET /assets/", appFS)
 
 	// handle room operations
 	mux.HandleFunc("/", api.HandleRoot)
 	// views
 	mux.HandleFunc("GET /home", api.HandleDefault)
 	mux.HandleFunc("GET /join", api.HandleJoin)
-	mux.HandleFunc("GET /lobby", api.EnterLobby)
 	// api
 	mux.HandleFunc("GET /api/new-user", api.HandleNewUser)
 	mux.HandleFunc("POST /api/session", api.HandleNewSession)

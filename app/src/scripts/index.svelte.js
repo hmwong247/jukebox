@@ -1,13 +1,21 @@
-// global
-const session = {
+// external library
+import htmx from "htmx.org"
+
+// internal library
+
+// global state
+const session = $state({
+	/** @type {WebSocket?} ws */
+	ws: null,
 	sessionID: "",
 	roomID: "",
 	username: "user",
+	/** @type {Object.<string, {name: string, host: boolean}>} userList */
 	userList: {},
 	playlist: [],
 	userID: "",
 	hostID: "",
-}
+});
 
 // const
 const API_PATH = Object.freeze({
@@ -27,9 +35,18 @@ const API_PATH = Object.freeze({
 	HOME: "/home",
 })
 
-/**
- * init
- */
+const MSG_TYPE = Object.freeze({
+	EVENT_DEBUG: 0,
+	EVENT_ROOM: 1,
+	EVENT_PEER: 2,
+	EVENT_PLAYLIST: 3,
+	EVENT_PLAYER: 4,
+})
+
+
+/*
+  init
+*/
 addEventListener("DOMContentLoaded", async () => {
 	await onDOMContentLoaded()
 })
@@ -39,9 +56,9 @@ async function onDOMContentLoaded() {
 	//htmx.logAll()
 }
 
-/**
- * API calls
- */
+/*
+  API calls
+*/
 
 async function fetchUserID() {
 	if (window.localStorage.getItem("userID") == null) {
@@ -59,8 +76,11 @@ async function fetchUserID() {
 	session.userID = window.localStorage.getItem("userID")
 }
 
+/** 
+ * @param {HTMLFormElement} form
+ */
 async function fetchSessionID(form) {
-	formData = new FormData(form)
+	const formData = new FormData(form)
 	formData.append("user_id", window.localStorage.getItem("userID"))
 
 	const sid = await fetch(API_PATH.SESSION, {
@@ -78,8 +98,11 @@ async function fetchSessionID(form) {
 	session.sessionID = sid
 }
 
+/** 
+ * @param {HTMLFormElement} form
+ */
 async function fetchSessionIDJoin(form) {
-	formData = new FormData(form)
+	const formData = new FormData(form)
 	formData.append("user_id", window.localStorage.getItem("userID"))
 	formData.append("room_id", session.roomID)
 
@@ -112,15 +135,6 @@ async function fetchRoomID() {
 	session.roomID = rid
 }
 
-async function connectWebSocket() {
-	const wsPath = "ws://" + document.location.host + API_PATH.WEBSOCKET + "?sid=" + session.sessionID
-	await connectWS(wsPath).then(() => {
-		console.log("ws connected")
-	}).catch((err) => {
-		console.error(`ws err: ${err}`)
-	})
-}
-
 function fetchUserList() {
 	// store the user list in session, we have to
 	return new Promise((resolve, reject) => {
@@ -131,6 +145,10 @@ function fetchUserList() {
 	})
 }
 
+/**
+ * @param {MouseEvent} event
+ * @param {HTMLFormElement} form
+ */
 async function requestNewRoom(event, form) {
 	// submit user profile and fetch session ID
 	event.preventDefault()
@@ -141,8 +159,8 @@ async function requestNewRoom(event, form) {
 		document.forms["user_profile"]["cfg_username"].value = session.username
 	}
 
-	// fetch user ID
 	try {
+		// fetch user ID
 		await fetchUserID()
 
 		// fetch session ID
@@ -159,16 +177,24 @@ async function requestNewRoom(event, form) {
 	}
 
 	// render the lobby page
-	const lobbyPath = API_PATH.LOBBY + "?sid=" + session.sessionID
-	await htmx.ajax("GET", lobbyPath, { target: "#div_swap", })
-	history.pushState({}, "", API_PATH.LOBBY)
-	swapUsername(session.username)
-	swapInviteLink(document.querySelector("#room_id").innerHTML)
+	// const lobbyPath = API_PATH.LOBBY + "?sid=" + session.sessionID
+	// await htmx.ajax("get", lobbyPath, { target: "#div_swap", })
+	// history.pushState({}, "", API_PATH.LOBBY)
+	// swapUsername(session.username)
+	// swapInviteLink(document.querySelector("#room_id").innerHTML)
 
-	fetchUserList().then(data => session.userList = data)
+	await fetchUserList().then(data => {
+		for(const id in data) {
+			session.userList[id] = data[id]
+		}
+	})
 	session.hostID = session.userID
 }
 
+/**
+ * @param {MouseEvent} event
+ * @param {HTMLFormElement} form
+ */
 async function requestJoinRoom(event, form) {
 	// submit user profile and fetch session ID
 	event.preventDefault()
@@ -200,97 +226,136 @@ async function requestJoinRoom(event, form) {
 	}
 
 	// render the lobby page
-	const lobbyPath = API_PATH.LOBBY + "?sid=" + session.sessionID
-	await htmx.ajax("GET", lobbyPath, { target: "#div_swap", }).catch(err => { console.error(err); return })
-	history.pushState({}, "", API_PATH.LOBBY)
-	swapUsername(session.username)
-	swapInviteLink(document.querySelector("#room_id").innerHTML)
+	// const lobbyPath = API_PATH.LOBBY + "?sid=" + session.sessionID
+	// await htmx.ajax("get", lobbyPath, { target: "#div_swap", }).catch(err => { console.error(err); return })
+	// history.pushState({}, "", API_PATH.LOBBY)
+	// swapUsername(session.username)
+	// swapInviteLink(document.querySelector("#room_id").innerHTML)
 
-	fetchUserList().then(data => session.userList = data).then(() => {
-		for (id in session.userList) {
-			if (session.userList[id].host === true) {
+	await fetchUserList().then(data => {
+		for(const id in data) {
+			session.userList[id] = data[id]
+			if (data[id].host === true) {
 				session.hostID = id
-				break
 			}
 		}
 	})
 }
 
-async function submitURL(event, form) {
-	event.preventDefault()
-	formData = new FormData(form)
-	formData.append("user_id", window.localStorage.getItem("userID"))
+/*
+	WebSocket
+*/
 
-	await fetch(API_PATH.ENQUEUE + "?sid=" + session.sessionID, {
-		method: "POST",
-		body: formData
-	}).then((res) => {
-		if (res.ok) {
-			console.log(res.status)
-		} else {
-			console.log(res.status)
+function connectWebSocket() {
+	const wsPath = "ws://" + document.location.host + API_PATH.WEBSOCKET + "?sid=" + session.sessionID
+	return new Promise((resolve, reject) => {
+		session.ws = new WebSocket(wsPath)
+
+		session.ws.onopen = (event) => {
+			console.log("ws open: " + JSON.stringify(event))
+			resolve()
 		}
-	}).catch(err => {
-		throw err
+		session.ws.onerror = (event) => {
+			console.log("ws err: " + JSON.stringify(event))
+			reject()
+		}
+		session.ws.onclose = (event) => {
+			console.log("ws close: " + JSON.stringify(event))
+			reject()
+		}
+
+		session.ws.onmessage = (event) => {
+			//console.log("ws recv: " + event.data)
+			const msg = JSON.parse(event.data)
+			switch (msg.MsgType) {
+				case MSG_TYPE.EVENT_ROOM:
+					updateRoomStatus(msg)
+					updatePeerConnection(msg)
+					break
+				case MSG_TYPE.EVENT_PEER:
+					answerPeer(msg)
+					break
+				case MSG_TYPE.EVENT_PLAYLIST:
+					updatePlaylist(msg)
+					break
+				case MSG_TYPE.EVENT_PLAYER:
+					updateMP(msg)
+					break
+				default:
+					break
+			}
+		}
+
 	})
 }
 
-/**
- * UI/UX related functions
- */
+function updateRoomStatus(msg) {
+	const payload = msg.Data
+	switch (payload) {
+		case "join": {
+			session.userList[msg.UID] = { name: msg.Username, host: false }
+			// swapRoomCapacity(Object.keys(session.userList).length)
+			// swapUserList(msg.UID, msg.Username)
+			break
+		}
+		case "left": {
+			delete session.userList[msg.UID]
+			// swapRoomCapacity(Object.keys(session.userList).length)
+			// swapUserList(msg.UID, msg.Username, false)
+			break
+		}
+		case "host": {
+			session.hostID = msg.UID
+			session.userList[msg.UID].host = true
+			// swapHost(msg.Username)
+			break
+		}
+		default:
+			console.warn(`[updateRoomStatus] got unknown payload: ${payload}`)
+			break
+	}
+}
+
+function updatePlaylist(msg) {
+	const cmd = msg.Data.Cmd
+	switch (cmd) {
+		case "add":
+			delete msg.Data['Cmd']
+			session.playlist.push(msg.Data)
+			swapPlaylist(msg.Data)
+			break
+		case "remove":
+			break
+		case "swap":
+			break
+		default:
+			break
+	}
+}
+
+function updateMP(msg) {
+	const data = msg.Data
+	if (data.OK == true) {
+		playAudio()
+	}
+}
+
+function updatePeerConnection(msg) {
+	const evt = msg.Data
+	if (evt === "join") {
+		addPeer(msg)
+	} else if (evt === "left") {
+		removePeer(msg)
+	}
+}
+
+/*
+	UI/UX related functions
+*/
 
 // redirect to home page
 function autoResetPage() {
-	htmx.ajax("GET", API_PATH.HOME, { target: "#div_swap" }).catch(err => { console.error(err); return })
-}
-
-function copyLink() {
-	const link = document.querySelector("#room_id").innerHTML
-	if (navigator.clipboard && window.isSecureContext) {
-		navigator.clipboard.writeText(link)
-			.then(data => { console.log(data) })
-			.catch(err => { console.log(err) })
-	} else {
-		const textArea = document.createElement("textarea")
-		textArea.value = link
-		textArea.style.position = "fixed" // avoid scrolling to bottom
-		document.body.appendChild(textArea)
-		textArea.select()
-
-		try {
-			document.execCommand("copy")
-		} catch (err) {
-			console.log(err)
-		} finally {
-			textArea.remove()
-		}
-	}
-}
-
-function swapInviteLink(code) {
-	const link = document.location.origin + API_PATH.JOIN + "?rid=" + code
-	document.querySelector("#room_id").innerHTML = link
-}
-
-function swapUsername(name) {
-	document.querySelector("#username").innerHTML = name
-}
-
-function swapHost(host) {
-	document.querySelector("#room_host").innerHTML = host
-}
-
-function swapRoomCapacity(size) {
-	document.querySelector("#room_capacity").innerHTML = size
-}
-
-function swapUserList(id, username, isAdd = true) {
-	if (isAdd) {
-		const row = `<li id=\"uid${id}\">user name: ${username}<br>id: ${id}</li>`
-		htmx.swap("#room_user_list", row, { swapStyle: "beforeend" })
-	} else {
-		htmx.remove(htmx.find(`#uid${id}`))
-	}
+	htmx.ajax("get", API_PATH.HOME, { target: "#div_swap" }).catch(err => { console.error(err); return })
 }
 
 // WIP
@@ -304,9 +369,9 @@ function swapPlaylist(infojson, shift = false) {
 	}
 }
 
-/**
- * web audio
- */
+/*
+	web audio
+*/
 
 const mp = {
 	/** @type {HTMLAudioElement | HTMLMediaElement} elem */
@@ -454,3 +519,14 @@ async function playAudioAsPeer() {
 	initMP()
 	mp.elem.addEventListener('ended', peermpended, { once: true })
 }
+
+export const api = {
+	requestNewRoom,
+	requestJoinRoom,
+}
+
+// const
+export { API_PATH }
+
+// global state
+export { session }
