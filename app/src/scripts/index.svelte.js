@@ -1,20 +1,17 @@
 // external library
 import htmx from "htmx.org"
-
-// internal library
+import SimplePeer from "simple-peer";
 
 // global state
 const session = $state({
-	/** @type {WebSocket?} ws */
-	ws: null,
-	sessionID: "",
-	roomID: "",
+	sessionID: null,
+	roomID: null,
 	username: "user",
 	/** @type {Object.<string, {name: string, host: boolean}>} userList */
 	userList: {},
 	playlist: [],
-	userID: "",
-	hostID: "",
+	userID: null,
+	hostID: null,
 });
 
 // const
@@ -44,8 +41,8 @@ const MSG_TYPE = Object.freeze({
 })
 
 
-/*
-  init
+/*==============================================================================
+	init
 */
 addEventListener("DOMContentLoaded", async () => {
 	await onDOMContentLoaded()
@@ -56,7 +53,7 @@ async function onDOMContentLoaded() {
 	//htmx.logAll()
 }
 
-/*
+/*==============================================================================
   API calls
 */
 
@@ -184,7 +181,7 @@ async function requestNewRoom(event, form) {
 	// swapInviteLink(document.querySelector("#room_id").innerHTML)
 
 	await fetchUserList().then(data => {
-		for(const id in data) {
+		for (const id in data) {
 			session.userList[id] = data[id]
 		}
 	})
@@ -233,7 +230,7 @@ async function requestJoinRoom(event, form) {
 	// swapInviteLink(document.querySelector("#room_id").innerHTML)
 
 	await fetchUserList().then(data => {
-		for(const id in data) {
+		for (const id in data) {
 			session.userList[id] = data[id]
 			if (data[id].host === true) {
 				session.hostID = id
@@ -242,29 +239,34 @@ async function requestJoinRoom(event, form) {
 	})
 }
 
-/*
+/*==============================================================================
 	WebSocket
 */
+
+const ws = $state({
+	/** @type {WebSocket?} ws */
+	client: null,
+})
 
 function connectWebSocket() {
 	const wsPath = "ws://" + document.location.host + API_PATH.WEBSOCKET + "?sid=" + session.sessionID
 	return new Promise((resolve, reject) => {
-		session.ws = new WebSocket(wsPath)
+		ws.client = new WebSocket(wsPath)
 
-		session.ws.onopen = (event) => {
+		ws.client.onopen = (event) => {
 			console.log("ws open: " + JSON.stringify(event))
 			resolve()
 		}
-		session.ws.onerror = (event) => {
+		ws.client.onerror = (event) => {
 			console.log("ws err: " + JSON.stringify(event))
 			reject()
 		}
-		session.ws.onclose = (event) => {
+		ws.client.onclose = (event) => {
 			console.log("ws close: " + JSON.stringify(event))
 			reject()
 		}
 
-		session.ws.onmessage = (event) => {
+		ws.client.onmessage = (event) => {
 			//console.log("ws recv: " + event.data)
 			const msg = JSON.parse(event.data)
 			switch (msg.MsgType) {
@@ -322,7 +324,7 @@ function updatePlaylist(msg) {
 		case "add":
 			delete msg.Data['Cmd']
 			session.playlist.push(msg.Data)
-			swapPlaylist(msg.Data)
+			// swapPlaylist(msg.Data)
 			break
 		case "remove":
 			break
@@ -336,7 +338,7 @@ function updatePlaylist(msg) {
 function updateMP(msg) {
 	const data = msg.Data
 	if (data.OK == true) {
-		playAudio()
+		loadAudioAsHost()
 	}
 }
 
@@ -349,7 +351,7 @@ function updatePeerConnection(msg) {
 	}
 }
 
-/*
+/*==============================================================================
 	UI/UX related functions
 */
 
@@ -358,175 +360,275 @@ function autoResetPage() {
 	htmx.ajax("get", API_PATH.HOME, { target: "#div_swap" }).catch(err => { console.error(err); return })
 }
 
-// WIP
-// id is needed for remove, swap
-function swapPlaylist(infojson, shift = false) {
-	if (shift) {
-		htmx.find(`#pl${infojson.ID}`).remove()
-	} else {
-		const row = `<li id='pl${infojson.ID}'>${JSON.stringify(infojson)}</li>`
-		htmx.swap("#room_queue_list", row, { swapStyle: "beforeend" })
-	}
-}
-
-/*
+/*==============================================================================
 	web audio
 */
 
-const mp = {
-	/** @type {HTMLAudioElement | HTMLMediaElement} elem */
+const mp = $state({
+	/** @type {HTMLAudioElement} elem - binded component */
 	elem: null,
-	/** @type {HTMLAudioElement} mozElem */
-	mozElem: null,
+	/** @type {AudioContext} ctx */
+	ctx: null,
+	/** @type {MediaElementAudioSourceNode} srcNode */
+	srcNode: null,
+	/** @type {GainNode} gainNode */
+	gainNode: null,
 	/** @type {Boolean} running */
 	running: false,
-	/** @type {MediaStream} localStream - captured locally */
+	/** @type {MediaStream} localStream - media stream for hosting */
 	localStream: null,
-	/** @type {MediaStream} remoteStream - streamed from peer */
-	remoteStream: null,
-}
-
-function initMP() {
-	mp.elem = document.querySelector("#player")
-	mp.elem.removeEventListener('loadstart', mploadstart)
-	mp.elem.removeEventListener('timeupdate', mptimeupdate)
-	mp.elem.removeEventListener('ended', mpended)
-
-	mp.elem.src = API_PATH.STREAM + "?sid=" + session.sessionID
-	mp.elem.addEventListener('loadstart', mploadstart)
-}
+	/** @type {MediaStreamTrack} currentTrack */
+	currentTrack: null,
+})
 
 /** 
  * init the MediaStream for the host
  */
 function lazyInitMPStream() {
-	if (!mp.elem) {
-		mp.elem = document.querySelector("#player")
-		if (!mp.localStream) {
+	if (mp.elem !== null) {
+		if (mp.localStream === null) {
 			mp.localStream = new MediaStream()
 		}
 	}
 }
 
-async function mpcanplay() {
-	lazyInitMPStream()
-	let stream
-	if ("mozCaptureStream" in mp.elem) {
-		stream = mp.elem.mozCaptureStream()
-		if (!mp.mozElem) {
-			mp.mozElem = new Audio()
-		}
-	} else {
-		stream = mp.elem.captureStream()
+async function loadAudioAsHost() {
+	if (mp.elem && mp.running && mp.elem.buffered.length > 0 && mp.elem.currentTime != 0) {
+		if (mp.elem.buffered.length > 0 && mp.elem.currentTime != 0 && !mp.elem.paused) return
+		return
 	}
-	const track = stream.getTracks()[0]
-	startSyncPeer(mp.localStream, track)
-	mp.localStream.addTrack(track)
+
+	mp.elem.src = API_PATH.STREAM + "?sid=" + session.sessionID
+
+	// 	// 	// implement a retry mechanism
+	// 	// const url = API_PATH.STREAM_END + "?sid=" + session.sessionID
+	// 	// const serverResp = await fetch(url, {method: "HEAD"}).then(r => r.ok)
+	// 	// if(!serverResp) {
+	// 	// 	return
+	// 	// }
 }
 
-async function mploadstart() {
-	console.log(`loadstart`)
-	mp.elem.addEventListener('canplay', mpcanplay, { once: true })
+async function loadAudioAsPeer() {
+	// if (mp.elem && mp.running && mp.elem.buffered.length > 0 && mp.elem.currentTime != 0) {
+	// 	// if (mp.elem.buffered.length > 0 && mp.elem.currentTime != 0 && !mp.elem.paused) return
+	// 	return
+	// }
+}
+
+/*==============================================================================
+	  WebRTC operation with simple-peer, https://github.com/feross/simple-peer
+	  the new joiner will be passive for an easier life
+ */
+
+/** @type {Object.<string, SimplePeer.Instance>} */
+var peers = {}
+
+const PEER_CMD = Object.freeze({
+	INIT: "init",
+	PLAY: "play",
+	PAUSE: "pause",
+	SKIP: "skip",
+	STOP: "stop",
+})
+
+function allPeers(msg) {
+	for (const uuid in peers) {
+		peers[uuid].send(JSON.stringify(msg));
+	}
+
+}
+
+function toPeer() {
+
+}
+
+/**
+ * callback when HTMLMediaElement.oncanplay fired
+ * the buffer is ensured that the audio is ready
+ *
+ * @param {!MediaStreamTrack} oldTrack - old captured MediaStreamTrack
+ * @param {!MediaStreamTrack} newTrack - new captured MediaStreamTrack
+ * @param {!MediaStream} localStream
+ */
+function startSyncPeer(oldTrack, newTrack, localStream) {
+	// function startSyncPeer(newTrack, localStream) {
+	//for (uuid in peers) {
+	//	const msg = { from: session.userID, payload: PEER_CMD.INIT }
+	//	peers[uuid].send(JSON.stringify(msg))
+	//}
+
+	console.log(`start sync`)
+	mp.currentTrack = newTrack
+	for (const id in peers) {
+		if (oldTrack === null) {
+			peers[id].addTrack(newTrack, localStream)
+			console.log(`added track`)
+		} else {
+			peers[id].replaceTrack(oldTrack, newTrack, localStream)
+			console.log(`replaced track`)
+		}
+	}
+	//}
+}
+
+function removePeer(msg) {
+	if (peers[msg.UID]) {
+		peers[msg.UID].destroy();
+		delete peers[msg.UID];
+	}
+}
+
+function addPeer(msg) {
+	if (msg.UID === session.userID) { return }
+
+	let config = { initiator: true, trickle: false }
+	if (session.userID === session.hostID) {
+		lazyInitMPStream()
+		config.stream = mp.localStream
+	}
+	console.log(config)
+	let conn = new SimplePeer(config)
+
+	conn.on('error', err => {
+		console.log(`addPeer error, at ${session.userID}: ${err}`)
+
+		if (peers[msg.UID]) {
+			peers[msg.UID].destroy()
+			delete peers[msg.UID]
+		}
+	})
+
+	conn.on('signal', data => {
+		//console.log(`addPeer signal, at ${session.userID}: ${JSON.stringify(data)}`)
+		const dm = {
+			To: msg.UID,
+			Data: data,
+		}
+		ws.client.send(JSON.stringify(dm))
+	})
+
+	conn.on('connect', () => {
+		console.log(`addPeer connect, at ${session.userID}`)
+	})
+
+	conn.on('data', data => onpeerdata(data))
+	conn.on('stream', stream => onpeerstream(stream))
+	conn.on('track', (track, stream) => {
+		console.log("addpeer ontrack: ", track, stream)
+	})
+
+	peers[msg.UID] = conn
+}
+
+// signal(answer) back all the peers
+function answerPeer(msg) {
+	const from = msg.UID
+	if (!peers[from]) {
+		const conn = new SimplePeer({ initiator: false, trickle: false })
+
+		conn.on('error', err => {
+			console.log(`answerPeer error, at ${session.userID}: ${err}`)
+
+			if (peers[from]) {
+				peers[from].destroy()
+				delete peers[from]
+			}
+		})
+
+		conn.on('signal', data => {
+			//console.log(`answerPeer signal, at ${session.userID}: ${JSON.stringify(data)}`)
+
+			const dm = {
+				To: from,
+				Data: data,
+			}
+			ws.client.send(JSON.stringify(dm))
+		})
+
+		conn.on('connect', () => {
+			console.log(`answerPeer connect, at ${session.userID}`)
+		})
+
+		// datachannel and stream
+		conn.on('data', data => onpeerdata(data))
+		conn.on('stream', stream => onpeerstream(stream))
+		conn.on('track', (track, stream) => {
+			console.log("answerpeer ontrack: ", track, stream)
+		})
+
+		peers[from] = conn
+		console.log(conn)
+	}
+
+	peers[from].signal(JSON.parse(msg.Data).Data)
+}
+
+/*
+ * Simple-peer event listeners
+ * /
+
+/** @param {{to: string, payload: string}} msg */
+function onpeerdata(msg) {
+	console.log(`onpeerdata, at ${session.userID}: ` + msg)
+	const data = JSON.parse(msg.toString())
+	const from = data.from
+	if (from === session.hostID) {
+		const payload = data.payload
+		console.log(`payload: ${payload}`)
+		switch (payload) {
+			case PEER_CMD.INIT:
+				loadAudioAsPeer()
+				break
+			case PEER_CMD.PLAY:
+				mp.elem.play()
+				break
+			case PEER_CMD.PAUSE:
+				mp.elem.pause()
+				break
+			case PEER_CMD.STOP:
+				mp.elem.pause()
+				mp.elem.currentTime = 0
+				const endedJson = session.playlist.shift();
+				mp.running = false
+				break
+		}
+	}
+}
+
+/** @param {MediaStream} stream */
+function onpeerstream(stream) {
+	console.log(`onpeerstream` + stream)
+	if ("srcObject" in mp.elem) {
+		mp.elem.srcObject = stream
+	} else {
+		mp.elem.src = URL.createObjectURL(stream)
+		// @TODO revoke the objecturl
+	}
 	mp.elem.play()
-	mp.running = true
+	mp.running = true;
 }
 
-async function mptimeupdate() {
-	if (mp.elem.currentTime / mp.elem.duration >= 0.5 && session.playlist.length > 1) {
-		mp.elem.removeEventListener('timeupdate', mptimeupdate)
+/*==============================================================================
+	exports module
+*/
 
-		const url = API_PATH.STREAM_PRELOAD + "?sid=" + session.sessionID
-		const res = await fetch(url)
-		if (res.ok) {
-			// const s = await res.json()
-			// if (s == false) {
+// const
+export { API_PATH, PEER_CMD }
 
-			// }
-		}
-	}
-}
+// global state
+export { session, ws, mp }
 
-async function mpended() {
-	console.log(`ended`)
-	mp.elem.pause()
-	mp.elem.currentTime = 0
-	const url = API_PATH.STREAM_END + "?sid=" + session.sessionID
-	const response = fetch(url)
-	// .then wait for server to reponse the next audio is ready if the queue is not size of 0
-
-	const endedJson = session.playlist.shift()
-	swapPlaylist(endedJson, true)
-
-	if (session.playlist.length > 0) {
-		// wait for 20ms to switch audio
-		// await new Promise(r => setTimeout(r, 20))
-		// if ok
-		playAudio()
-	} else {
-		mp.elem.pause()
-		mp.elem.removeAttribute("src")
-		mp.elem.load()
-		mp.running = false
-	}
-}
-
-async function peermpended() {
-	console.log(`ended`)
-	mp.elem.pause()
-	mp.elem.currentTime = 0
-	const endedJson = session.playlist.shift()
-	swapPlaylist(endedJson, true)
-
-	if (session.playlist.length > 0) {
-		playAudioAsPeer()
-	} else {
-		mp.elem.pause()
-		mp.elem.removeAttribute("src")
-		mp.elem.load()
-		mp.running = false
-	}
-}
-
-async function playAudio() {
-	if (mp.elem && mp.running && mp.elem.buffered.length > 0 && mp.elem.currentTime != 0) {
-		// if (mp.elem.buffered.length > 0 && mp.elem.currentTime != 0 && !mp.elem.paused) return
-		return
-	}
-	// 	// implement a retry mechanism
-	// const url = API_PATH.STREAM_END + "?sid=" + session.sessionID
-	// const serverResp = await fetch(url, {method: "HEAD"}).then(r => r.ok)
-	// if(!serverResp) {
-	// 	return
-	// }
-	initMP()
-	// host specific event listener
-	mp.elem.addEventListener('loadstart', mploadstart) // host will init the play
-	mp.elem.addEventListener('timeupdate', mptimeupdate)
-	mp.elem.addEventListener('ended', mpended, { once: true })
-}
-
-async function playAudioAsPeer() {
-	if (mp.elem && mp.running && mp.elem.buffered.length > 0 && mp.elem.currentTime != 0) {
-		// if (mp.elem.buffered.length > 0 && mp.elem.currentTime != 0 && !mp.elem.paused) return
-		return
-	}
-	// 	// implement a retry mechanism
-	// const url = API_PATH.STREAM_END + "?sid=" + session.sessionID
-	// const serverResp = await fetch(url, {method: "HEAD"}).then(r => r.ok)
-	// if(!serverResp) {
-	// 	return
-	// }
-	initMP()
-	mp.elem.addEventListener('ended', peermpended, { once: true })
-}
-
+// api
 export const api = {
 	requestNewRoom,
 	requestJoinRoom,
 }
 
-// const
-export { API_PATH }
-
-// global state
-export { session }
+// WebRTC
+export const rtc = {
+	startSyncPeer,
+	lazyInitMPStream,
+	loadAudioAsHost,
+	loadAudioAsPeer,
+	allPeers,
+}

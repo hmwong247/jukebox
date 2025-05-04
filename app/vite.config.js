@@ -27,5 +27,11 @@ export default defineConfig({
       //   changeOrigin: true,
       // },
     }
-  }
+  },
+  resolve: {
+    alias: {
+      // ...
+      "simple-peer": "simple-peer/simplepeer.min.js",
+    },
+  },
 })

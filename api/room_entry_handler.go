@@ -7,7 +7,6 @@ import (
 	"main/internal/room"
 	"net/http"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/google/uuid"
@@ -70,10 +69,9 @@ func HandleRoot(w http.ResponseWriter, r *http.Request) {
 
 // route: "GET /home"
 func HandleDefault(w http.ResponseWriter, r *http.Request) {
-	// tmpl := template.Must(template.ParseFiles("statics/index.html", "templates/forms/user_profile.html"))
+	// tmpl := template.Must(template.ParseFiles("app/dist/index.html"))
 	// tmpl.Execute(w, nil)
-	tmpl := template.Must(template.ParseFiles("app/dist/index.html"))
-	tmpl.Execute(w, nil)
+	http.ServeFile(w, r, "app/dist/index.html")
 }
 
 // route: "GET /join?rid="
@@ -89,8 +87,9 @@ func HandleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl := template.Must(template.ParseFiles("app/dist/index.html"))
-	tmpl.Execute(w, nil)
+	// tmpl := template.Must(template.ParseFiles("app/dist/index.html"))
+	// tmpl.Execute(w, nil)
+	http.ServeFile(w, r, "app/dist/index.html")
 }
 
 /*

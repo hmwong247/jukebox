@@ -1,11 +1,198 @@
 <script>
+    import { onMount } from "svelte";
+    import {
+        session,
+        mp,
+        rtc,
+        API_PATH,
+        PEER_CMD,
+    } from "../../scripts/index.svelte.js";
 
+    // bind
+    let mpProgress;
+
+    let mpPlayButton = $derived(mp.running);
+    let isHost = $derived(session.userID === session.hostID ? true : false);
+    let mpCurrentTimeMin = $state(0),
+        mpCurrentTimeSec = $state("00");
+    let mpDurationMin = $state(0),
+        mpDurationSec = $state("00");
+
+    // init mp
+    onMount(() => {
+        mp.ctx = new AudioContext();
+        mp.srcNode = mp.ctx.createMediaElementSource(mp.elem);
+        mp.gainNode = mp.ctx.createGain();
+
+        mp.srcNode.connect(mp.gainNode);
+        mp.gainNode.connect(mp.ctx.destination);
+    });
+
+    function togglePlayPause() {
+        if (mp.running) {
+            if (mp.elem.paused) {
+                mp.elem.play();
+            } else {
+                mp.elem.pause();
+            }
+        }
+    }
+
+    function onplay() {
+        if (isHost) {
+            const msg = { from: session.userID, payload: PEER_CMD.PLAY };
+            rtc.allPeers(msg);
+        }
+    }
+
+    function onpause() {
+        if (isHost) {
+            const msg = { from: session.userID, payload: PEER_CMD.PAUSE };
+            rtc.allPeers(msg);
+        }
+    }
+
+    function ontimeupdate() {
+        // labels
+        mpCurrentTimeMin = Math.trunc(mp.elem.currentTime / 60);
+        mpCurrentTimeSec = `${Math.trunc(mp.elem.currentTime % 60)}`.padStart(
+            2,
+            "0",
+        );
+
+        // progress bar
+        mpProgress.value = mp.elem.currentTime;
+    }
+
+    function oninput() {
+        if (mp.elem !== null) {
+            mp.elem.currentTime = mpProgress.value;
+        }
+    }
+
+    function onloadedmetadata() {
+        // labels
+        mpDurationMin = Math.trunc(session.playlist[0].Duration / 60);
+        mpDurationSec =
+            `${Math.trunc(session.playlist[0].Duration % 60)}`.padStart(2, "0");
+
+        // progress bar
+        mpProgress.max = mp.elem.duration;
+    }
+
+    function mpcanplay() {
+        rtc.lazyInitMPStream();
+        let stream;
+        if ("mozCaptureStream" in mp.elem) {
+            stream = mp.elem.mozCaptureStream();
+        } else {
+            stream = mp.elem.captureStream();
+        }
+        const newTrack = stream.getTracks()[0];
+        rtc.startSyncPeer(mp.currentTrack, newTrack, mp.localStream);
+        mp.localStream.addTrack(newTrack);
+    }
+
+    async function mpprefetch() {
+        if (
+            mp.elem.currentTime / mp.elem.duration >= 0.5 &&
+            session.playlist.length > 1
+        ) {
+            mp.elem.removeEventListener("timeupdate", mpprefetch);
+
+            const url = API_PATH.STREAM_PRELOAD + "?sid=" + session.sessionID;
+            const res = await fetch(url);
+            if (res.ok) {
+                // const s = await res.json()
+                // if (s == false) {
+                // }
+            }
+        }
+    }
+
+    function onloadstart() {
+        console.log(`loadstart`);
+        if (isHost) {
+            mp.elem.addEventListener("canplay", mpcanplay, { once: true });
+            mp.elem.addEventListener("timeupdate", mpprefetch);
+
+            mp.elem.play();
+            mp.running = true;
+        }
+
+        // peers will run the mp after they recieved the MediaTrack from host, i.e. onpeerstream
+    }
+
+    function onended() {
+        console.log(`ended`);
+
+        if (isHost) {
+            mp.elem.pause();
+            mp.elem.currentTime = 0;
+            mpCurrentTimeMin = 0;
+            mpCurrentTimeSec = "00";
+            mpDurationMin = 0;
+            mpDurationSec = "00";
+            mpProgress.value = 0;
+            const endedJson = session.playlist.shift();
+
+            // host will fetch the next music
+            const url = API_PATH.STREAM_END + "?sid=" + session.sessionID;
+            const response = fetch(url);
+            // .then wait for server to reponse the next audio is ready if the queue is not size of 0
+
+            if (session.playlist.length > 0) {
+                // wait for 20ms to switch audio
+                // await new Promise(r => setTimeout(r, 20))
+                // if ok
+                rtc.loadAudioAsHost();
+            } else {
+                const msg = { from: session.userID, payload: PEER_CMD.STOP };
+                rtc.allPeers(msg);
+
+                mp.elem.removeAttribute("src");
+                mp.elem.load();
+                mp.running = false;
+            }
+        }
+    }
 </script>
 
-<div id='mp-wrapper'>
-    <audio id='player' controls preload="none"></audio>
+<div id="mp-wrapper">
+    <section class="mp_info">
+        <img src="" alt="Thumbnail" />
+        <h2>FullTitle</h2>
+        <h4>Uploader</h4>
+    </section>
+    <section class="mp_controls">
+        <button onclick={togglePlayPause} disabled={!mp.running}
+            >{mpPlayButton}</button
+        >
+        <span>currentTime: {mpCurrentTimeMin}:{mpCurrentTimeSec}</span>
+        <input
+            id="player_progress"
+            bind:this={mpProgress}
+            type="range"
+            min="0"
+            value="0"
+            disabled={!mp.running}
+            {oninput}
+        />
+        <span>duration: {mpDurationMin}:{mpDurationSec}</span>
+    </section>
+    <audio
+        id="player"
+        controls
+        preload="none"
+        bind:this={mp.elem}
+        {onplay}
+        {onpause}
+        {ontimeupdate}
+        {onloadedmetadata}
+        {onended}
+        {onloadstart}
+    ></audio>
 </div>
 
 <style>
-
 </style>
