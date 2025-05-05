@@ -296,20 +296,16 @@ function updateRoomStatus(msg) {
 	switch (payload) {
 		case "join": {
 			session.userList[msg.UID] = { name: msg.Username, host: false }
-			// swapRoomCapacity(Object.keys(session.userList).length)
-			// swapUserList(msg.UID, msg.Username)
 			break
 		}
 		case "left": {
 			delete session.userList[msg.UID]
-			// swapRoomCapacity(Object.keys(session.userList).length)
-			// swapUserList(msg.UID, msg.Username, false)
 			break
 		}
 		case "host": {
 			session.hostID = msg.UID
 			session.userList[msg.UID].host = true
-			// swapHost(msg.Username)
+			rtcRestart()
 			break
 		}
 		default:
@@ -373,27 +369,33 @@ const mp = $state({
 	srcNode: null,
 	/** @type {GainNode} gainNode */
 	gainNode: null,
+	/** @type {MediaStreamAudioDestinationNode} mediaStreamNode */
+	mediaStreamNode: null,
 	/** @type {Boolean} running */
 	running: false,
-	/** @type {MediaStream} localStream - media stream for hosting */
+	/** @type {MediaStream} hostStream - media stream for hosting */
+	hostStream: null,
+	/** @type {MediaStream} localStream - media stream from the audio element*/
 	localStream: null,
 	/** @type {MediaStreamTrack} currentTrack */
 	currentTrack: null,
 })
 
 /** 
+ * host only
  * init the MediaStream for the host
  */
 function lazyInitMPStream() {
-	if (mp.elem !== null) {
-		if (mp.localStream === null) {
-			mp.localStream = new MediaStream()
-		}
+	if (mp.hostStream === null) {
+		mp.hostStream = new MediaStream()
+		mp.mediaStreamNode = mp.ctx.createMediaStreamDestination()
+		mp.localStream = mp.mediaStreamNode.stream
+		mp.srcNode.connect(mp.mediaStreamNode)
 	}
 }
 
 async function loadAudioAsHost() {
-	if (mp.elem && mp.running && mp.elem.buffered.length > 0 && mp.elem.currentTime != 0) {
+	if (mp.running && mp.elem.buffered.length > 0 && mp.elem.currentTime != 0) {
 		if (mp.elem.buffered.length > 0 && mp.elem.currentTime != 0 && !mp.elem.paused) return
 		return
 	}
@@ -428,6 +430,7 @@ const PEER_CMD = Object.freeze({
 	PLAY: "play",
 	PAUSE: "pause",
 	SKIP: "skip",
+	NEXT: "next",
 	STOP: "stop",
 })
 
@@ -458,7 +461,6 @@ function startSyncPeer(oldTrack, newTrack, localStream) {
 	//}
 
 	console.log(`start sync`)
-	mp.currentTrack = newTrack
 	for (const id in peers) {
 		if (oldTrack === null) {
 			peers[id].addTrack(newTrack, localStream)
@@ -484,7 +486,7 @@ function addPeer(msg) {
 	let config = { initiator: true, trickle: false }
 	if (session.userID === session.hostID) {
 		lazyInitMPStream()
-		config.stream = mp.localStream
+		config.stream = mp.hostStream
 	}
 	console.log(config)
 	let conn = new SimplePeer(config)
@@ -574,7 +576,7 @@ function onpeerdata(msg) {
 	const from = data.from
 	if (from === session.hostID) {
 		const payload = data.payload
-		console.log(`payload: ${payload}`)
+		// console.log(`payload: ${payload}`)
 		switch (payload) {
 			case PEER_CMD.INIT:
 				loadAudioAsPeer()
@@ -585,10 +587,15 @@ function onpeerdata(msg) {
 			case PEER_CMD.PAUSE:
 				mp.elem.pause()
 				break
+			case PEER_CMD.NEXT:
+				mp.elem.pause()
+				mp.elem.currentTime = 0
+				session.playlist.shift();
+				break
 			case PEER_CMD.STOP:
 				mp.elem.pause()
 				mp.elem.currentTime = 0
-				const endedJson = session.playlist.shift();
+				session.playlist.shift();
 				mp.running = false
 				break
 		}
@@ -602,10 +609,27 @@ function onpeerstream(stream) {
 		mp.elem.srcObject = stream
 	} else {
 		mp.elem.src = URL.createObjectURL(stream)
-		// @TODO revoke the objecturl
 	}
 	mp.elem.play()
 	mp.running = true;
+}
+
+/**
+ * this will be run when the host left
+ */
+function rtcRestart() {
+	console.log(`rtcRestart`)
+	mp.elem.pause()
+	mp.elem.volume = 1 // reset the stream source volume
+	mp.running = false;
+	if ("srcObject" in mp.elem) {
+		mp.elem.srcObject = null
+		mp.elem.removeAttribute("srcObject")
+	} else {
+		URL.revokeObjectURL(mp.elem.src)
+		mp.elem.src = null
+		mp.elem.removeAttribute("src")
+	}
 }
 
 /*==============================================================================

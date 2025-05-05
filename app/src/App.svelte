@@ -9,7 +9,7 @@
 	import { session } from "./scripts/index.svelte.js";
 
 	// debug
-	$inspect(`app: `, session)
+	// $inspect(`app: `, session)
 </script>
 
 <main>
@@ -17,7 +17,7 @@
 		<UserProfile />
 	{:else}
 		<CurrentRoom />
-		<MusicPlayer/>
+		<MusicPlayer />
 		<MusicQueue />
 	{/if}
 </main>

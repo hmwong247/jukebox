@@ -29,18 +29,23 @@
 		}
 	}
 
+	// state
 	let hostname = $derived.by(() => {
 		if (session.hostID === null) {
-			console.log(`search host`)
+			// console.log(`search host`);
 			for (const id in session.userList) {
 				if (session.userList[id].host === true) {
 					return session.userList[id].name;
 				}
 			}
 		} else {
-			console.log(`index host`)
+			// console.log(`index host`);
 			return session.userList[session.hostID].name;
 		}
+	});
+
+	let capacity = $derived.by(() => {
+		return Object.keys(session.userList).length;
 	});
 </script>
 
@@ -62,9 +67,7 @@
 		<div style="display:inline" id="room_host">{hostname}</div>
 		<br />
 		<p style="display:inline">capacity:</p>
-		<div style="display:inline" id="room_capacity">
-			{session.userList.size}
-		</div>
+		<div style="display:inline" id="room_capacity">{capacity}</div>
 		<br />
 	</article>
 

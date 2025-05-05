@@ -10,6 +10,12 @@
 
     // bind
     let mpProgress;
+    let mpVolume;
+
+    // $inspect(mpVolume).with((t, mpVolume) => {
+    //     if (t === "update") {
+    //     }
+    // });
 
     let mpPlayButton = $derived(mp.running);
     let isHost = $derived(session.userID === session.hostID ? true : false);
@@ -20,6 +26,7 @@
 
     // init mp
     onMount(() => {
+        console.log("new ctx");
         mp.ctx = new AudioContext();
         mp.srcNode = mp.ctx.createMediaElementSource(mp.elem);
         mp.gainNode = mp.ctx.createGain();
@@ -38,7 +45,15 @@
         }
     }
 
+    /*
+        audio events
+    */
+
     function onplay() {
+        if (mp.ctx.state === "suspended") {
+            mp.ctx.resume();
+        }
+
         if (isHost) {
             const msg = { from: session.userID, payload: PEER_CMD.PLAY };
             rtc.allPeers(msg);
@@ -64,9 +79,21 @@
         mpProgress.value = mp.elem.currentTime;
     }
 
-    function oninput() {
-        if (mp.elem !== null) {
-            mp.elem.currentTime = mpProgress.value;
+    function mpseek() {
+        mp.elem.currentTime = mpProgress.value;
+    }
+
+    function mpchangevolume() {
+        // work around for gainNode not working in chromium based browser
+        if ("mozCaptureStream" in mp.elem) {
+            mp.gainNode.gain.value = mpVolume.value;
+        } else {
+            // host should decouple the volume from the stream
+            if (isHost) {
+                mp.gainNode.gain.value = mpVolume.value;
+            } else {
+                mp.elem.volume = mpVolume.value;
+            }
         }
     }
 
@@ -77,20 +104,25 @@
             `${Math.trunc(session.playlist[0].Duration % 60)}`.padStart(2, "0");
 
         // progress bar
-        mpProgress.max = mp.elem.duration;
+        mpProgress.max = session.playlist[0].Duration;
     }
 
     function mpcanplay() {
         rtc.lazyInitMPStream();
-        let stream;
-        if ("mozCaptureStream" in mp.elem) {
-            stream = mp.elem.mozCaptureStream();
-        } else {
-            stream = mp.elem.captureStream();
+        // let stream;
+        // if ("mozCaptureStream" in mp.elem) {
+        //     stream = mp.elem.mozCaptureStream();
+        // } else {
+        //     stream = mp.elem.captureStream();
+        // }
+        // const newTrack = stream.getTracks()[0];
+        const newTrack = mp.localStream.getTracks()[0];
+        rtc.startSyncPeer(mp.currentTrack, newTrack, mp.hostStream);
+        if (mp.currentTrack !== null) {
+            mp.hostStream.removeTrack(mp.currentTrack);
         }
-        const newTrack = stream.getTracks()[0];
-        rtc.startSyncPeer(mp.currentTrack, newTrack, mp.localStream);
-        mp.localStream.addTrack(newTrack);
+        mp.hostStream.addTrack(newTrack);
+        mp.currentTrack = newTrack;
     }
 
     async function mpprefetch() {
@@ -146,6 +178,8 @@
                 // await new Promise(r => setTimeout(r, 20))
                 // if ok
                 rtc.loadAudioAsHost();
+                const msg = { from: session.userID, payload: PEER_CMD.NEXT };
+                rtc.allPeers(msg);
             } else {
                 const msg = { from: session.userID, payload: PEER_CMD.STOP };
                 rtc.allPeers(msg);
@@ -170,21 +204,31 @@
         >
         <span>currentTime: {mpCurrentTimeMin}:{mpCurrentTimeSec}</span>
         <input
-            id="player_progress"
             bind:this={mpProgress}
+            id="mp_progress"
             type="range"
             min="0"
             value="0"
             disabled={!mp.running}
-            {oninput}
+            oninput={mpseek}
         />
         <span>duration: {mpDurationMin}:{mpDurationSec}</span>
+        <input
+            bind:this={mpVolume}
+            id="mp_volume"
+            type="range"
+            value="1"
+            min="0"
+            max="1"
+            step="0.01"
+            oninput={mpchangevolume}
+        />
     </section>
     <audio
+        bind:this={mp.elem}
         id="player"
         controls
         preload="none"
-        bind:this={mp.elem}
         {onplay}
         {onpause}
         {ontimeupdate}
