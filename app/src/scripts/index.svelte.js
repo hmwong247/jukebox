@@ -387,10 +387,18 @@ const mp = $state({
  */
 function lazyInitMPStream() {
 	if (mp.hostStream === null) {
-		mp.hostStream = new MediaStream()
+		console.log(`new host ctx`)
+		mp.ctx = new AudioContext()
 		mp.mediaStreamNode = mp.ctx.createMediaStreamDestination()
-		mp.localStream = mp.mediaStreamNode.stream
+		mp.srcNode = mp.ctx.createMediaElementSource(mp.elem);
 		mp.srcNode.connect(mp.mediaStreamNode)
+
+		mp.gainNode = mp.ctx.createGain();
+		mp.srcNode.connect(mp.gainNode);
+		mp.gainNode.connect(mp.ctx.destination);
+
+		mp.hostStream = new MediaStream()
+		mp.localStream = mp.mediaStreamNode.stream
 	}
 }
 
@@ -400,21 +408,26 @@ async function loadAudioAsHost() {
 		return
 	}
 
+	// implement a retry mechanism
 	mp.elem.src = API_PATH.STREAM + "?sid=" + session.sessionID
-
-	// 	// 	// implement a retry mechanism
-	// 	// const url = API_PATH.STREAM_END + "?sid=" + session.sessionID
-	// 	// const serverResp = await fetch(url, {method: "HEAD"}).then(r => r.ok)
-	// 	// if(!serverResp) {
-	// 	// 	return
-	// 	// }
 }
 
-async function loadAudioAsPeer() {
-	// if (mp.elem && mp.running && mp.elem.buffered.length > 0 && mp.elem.currentTime != 0) {
-	// 	// if (mp.elem.buffered.length > 0 && mp.elem.currentTime != 0 && !mp.elem.paused) return
-	// 	return
-	// }
+async function loadAudioAsPeer(stream) {
+	if ("srcObject" in mp.elem) {
+		mp.elem.srcObject = stream
+	} else {
+		mp.elem.src = URL.createObjectURL(stream)
+	}
+
+	if (mp.srcNode === null) {
+		console.log("new peer ctx");
+		mp.ctx = new AudioContext()
+		mp.srcNode = mp.ctx.createMediaStreamSource(mp.elem.srcObject);
+		mp.gainNode = mp.ctx.createGain();
+
+		mp.srcNode.connect(mp.gainNode);
+		mp.gainNode.connect(mp.ctx.destination);
+	}
 }
 
 /*==============================================================================
@@ -605,22 +618,17 @@ function onpeerdata(msg) {
 /** @param {MediaStream} stream */
 function onpeerstream(stream) {
 	console.log(`onpeerstream` + stream)
-	if ("srcObject" in mp.elem) {
-		mp.elem.srcObject = stream
-	} else {
-		mp.elem.src = URL.createObjectURL(stream)
-	}
-	mp.elem.play()
-	mp.running = true;
+
+	loadAudioAsPeer(stream)
 }
 
 /**
  * this will be run when the host left
+ * @TODO: setup a protocol for reestablishing the peer mesh
  */
 function rtcRestart() {
 	console.log(`rtcRestart`)
 	mp.elem.pause()
-	mp.elem.volume = 1 // reset the stream source volume
 	mp.running = false;
 	if ("srcObject" in mp.elem) {
 		mp.elem.srcObject = null

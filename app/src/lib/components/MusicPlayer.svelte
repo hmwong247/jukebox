@@ -12,7 +12,7 @@
     let mpProgress;
     let mpVolume;
 
-    // $inspect(mpVolume).with((t, mpVolume) => {
+    // $inspect(mp).with((t, mp) => {
     //     if (t === "update") {
     //     }
     // });
@@ -24,15 +24,10 @@
     let mpDurationMin = $state(0),
         mpDurationSec = $state("00");
 
-    // init mp
-    onMount(() => {
-        console.log("new ctx");
-        mp.ctx = new AudioContext();
-        mp.srcNode = mp.ctx.createMediaElementSource(mp.elem);
-        mp.gainNode = mp.ctx.createGain();
-
-        mp.srcNode.connect(mp.gainNode);
-        mp.gainNode.connect(mp.ctx.destination);
+    $effect(() => {
+        if (isHost) {
+            mp.elem.volume = 1; // reset the stream source volume
+        }
     });
 
     function togglePlayPause() {
@@ -45,12 +40,16 @@
         }
     }
 
+    /**
+     *
+     */
+
     /*
         audio events
     */
 
     function onplay() {
-        if (mp.ctx.state === "suspended") {
+        if (mp.ctx && mp.ctx.state === "suspended") {
             mp.ctx.resume();
         }
 
@@ -84,16 +83,12 @@
     }
 
     function mpchangevolume() {
-        // work around for gainNode not working in chromium based browser
-        if ("mozCaptureStream" in mp.elem) {
+        if (isHost) {
+            // host volume is decoupled from the stream
             mp.gainNode.gain.value = mpVolume.value;
         } else {
-            // host should decouple the volume from the stream
-            if (isHost) {
-                mp.gainNode.gain.value = mpVolume.value;
-            } else {
-                mp.elem.volume = mpVolume.value;
-            }
+            mp.gainNode.gain.value = 0;
+            mp.elem.volume = mpVolume.value;
         }
     }
 
@@ -108,14 +103,6 @@
     }
 
     function mpcanplay() {
-        rtc.lazyInitMPStream();
-        // let stream;
-        // if ("mozCaptureStream" in mp.elem) {
-        //     stream = mp.elem.mozCaptureStream();
-        // } else {
-        //     stream = mp.elem.captureStream();
-        // }
-        // const newTrack = stream.getTracks()[0];
         const newTrack = mp.localStream.getTracks()[0];
         rtc.startSyncPeer(mp.currentTrack, newTrack, mp.hostStream);
         if (mp.currentTrack !== null) {
@@ -147,12 +134,11 @@
         if (isHost) {
             mp.elem.addEventListener("canplay", mpcanplay, { once: true });
             mp.elem.addEventListener("timeupdate", mpprefetch);
-
-            mp.elem.play();
-            mp.running = true;
         }
 
         // peers will run the mp after they recieved the MediaTrack from host, i.e. onpeerstream
+        mp.elem.play();
+        mp.running = true;
     }
 
     function onended() {
