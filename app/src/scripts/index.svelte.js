@@ -21,6 +21,7 @@ const API_PATH = Object.freeze({
 	SESSION: "/api/session",
 	CREATE: "/api/create",
 	USERS: "/api/users",
+	PLAYLIST: "/api/playlist",
 	ENQUEUE: "/api/enqueue",
 	STREAM: "/api/stream",
 	STREAM_END: "/api/streamend",
@@ -142,6 +143,15 @@ function fetchUserList() {
 	})
 }
 
+function fetchPlaylist() {
+	return new Promise((resolve, reject) => {
+		const path = API_PATH.PLAYLIST + "?sid=" + session.sessionID
+		fetch(path)
+			.then(res => { resolve(res.json()) })
+			.catch(err => { reject(err) })
+	})
+}
+
 /**
  * @param {MouseEvent} event
  * @param {HTMLFormElement} form
@@ -229,6 +239,11 @@ async function requestJoinRoom(event, form) {
 	// swapUsername(session.username)
 	// swapInviteLink(document.querySelector("#room_id").innerHTML)
 
+	await fetchPlaylist().then(data => {
+		session.playlist = data
+	})
+
+	// userlist should be the last, we swap compoenet base on the user list
 	await fetchUserList().then(data => {
 		for (const id in data) {
 			session.userList[id] = data[id]
@@ -375,8 +390,10 @@ const mp = $state({
 	running: false,
 	/** @type {MediaStream} hostStream - media stream for hosting */
 	hostStream: null,
-	/** @type {MediaStream} localStream - media stream from the audio element*/
+	/** @type {MediaStream} localStream - media stream from the audio element */
 	localStream: null,
+	/** @type {MediaStream} remoteStream - media stream from the host */
+	remoteStream: null,
 	/** @type {MediaStreamTrack} currentTrack */
 	currentTrack: null,
 })
@@ -416,6 +433,7 @@ async function loadAudioAsPeer(stream) {
 	if ("srcObject" in mp.elem) {
 		mp.elem.srcObject = stream
 	} else {
+		console.warn(`Using fallback ObjectURL`)
 		mp.elem.src = URL.createObjectURL(stream)
 	}
 
@@ -428,6 +446,10 @@ async function loadAudioAsPeer(stream) {
 		mp.srcNode.connect(mp.gainNode);
 		mp.gainNode.connect(mp.ctx.destination);
 	}
+
+	// update and run mp when recieved PEER_CMD.INIT
+	// mp.elem.play()
+	// mp.running = true
 }
 
 /*==============================================================================
@@ -447,14 +469,21 @@ const PEER_CMD = Object.freeze({
 	STOP: "stop",
 })
 
+/**
+ * @param {{from: string, payload: string}} msg
+ */
 function allPeers(msg) {
 	for (const uuid in peers) {
 		peers[uuid].send(JSON.stringify(msg));
 	}
-
 }
 
-function toPeer() {
+function toPeer(id, msg) {
+	for (const uuid in peers) {
+		if (uuid === id) {
+			peers[uuid].send(JSON.stringify(msg));
+		}
+	}
 
 }
 
@@ -464,26 +493,25 @@ function toPeer() {
  *
  * @param {!MediaStreamTrack} oldTrack - old captured MediaStreamTrack
  * @param {!MediaStreamTrack} newTrack - new captured MediaStreamTrack
- * @param {!MediaStream} localStream
+ * @param {!MediaStream} hostStream
  */
-function startSyncPeer(oldTrack, newTrack, localStream) {
-	// function startSyncPeer(newTrack, localStream) {
-	//for (uuid in peers) {
-	//	const msg = { from: session.userID, payload: PEER_CMD.INIT }
-	//	peers[uuid].send(JSON.stringify(msg))
-	//}
-
+function startSyncPeer(oldTrack, newTrack, hostStream) {
 	console.log(`start sync`)
 	for (const id in peers) {
 		if (oldTrack === null) {
-			peers[id].addTrack(newTrack, localStream)
+			peers[id].addTrack(newTrack, hostStream)
 			console.log(`added track`)
 		} else {
-			peers[id].replaceTrack(oldTrack, newTrack, localStream)
+			peers[id].replaceTrack(oldTrack, newTrack, hostStream)
 			console.log(`replaced track`)
 		}
 	}
-	//}
+}
+
+function startSyncNewPeer(id, track, hostStream) {
+	console.log(`sync new peer`)
+	const msg = { from: session.userID, payload: PEER_CMD.INIT };
+	toPeer(id, msg);
 }
 
 function removePeer(msg) {
@@ -524,6 +552,10 @@ function addPeer(msg) {
 
 	conn.on('connect', () => {
 		console.log(`addPeer connect, at ${session.userID}`)
+		// sync late joiners
+		if (session.userID === session.hostID && mp.running) {
+			startSyncNewPeer(msg.UID, mp.currentTrack, mp.hostStream)
+		}
 	})
 
 	conn.on('data', data => onpeerdata(data))
@@ -592,7 +624,8 @@ function onpeerdata(msg) {
 		// console.log(`payload: ${payload}`)
 		switch (payload) {
 			case PEER_CMD.INIT:
-				loadAudioAsPeer()
+				mp.elem.play()
+				mp.running = true
 				break
 			case PEER_CMD.PLAY:
 				mp.elem.play()
@@ -617,9 +650,10 @@ function onpeerdata(msg) {
 
 /** @param {MediaStream} stream */
 function onpeerstream(stream) {
-	console.log(`onpeerstream` + stream)
+	console.log(`onpeerstream`, stream)
 
 	loadAudioAsPeer(stream)
+	mp.remoteStream = stream
 }
 
 /**

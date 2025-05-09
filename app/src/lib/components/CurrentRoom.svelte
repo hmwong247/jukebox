@@ -31,16 +31,11 @@
 
 	// state
 	let hostname = $derived.by(() => {
-		if (session.hostID === null) {
-			// console.log(`search host`);
-			for (const id in session.userList) {
-				if (session.userList[id].host === true) {
-					return session.userList[id].name;
-				}
+		// do not index a reactive state
+		for (const id in session.userList) {
+			if (session.userList[id].host === true) {
+				return session.userList[id].name;
 			}
-		} else {
-			// console.log(`index host`);
-			return session.userList[session.hostID].name;
 		}
 	});
 

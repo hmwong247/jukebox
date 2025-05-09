@@ -190,3 +190,19 @@ func (mp *MusicPlayer) next() {
 	mp.CurNode = nextNode
 	mp.AudioReader = mp.NewAudioReader()
 }
+
+func (mp *MusicPlayer) MusicInfoList() []MusicInfo {
+	mp.Playlist.RLock()
+	defer mp.Playlist.RUnlock()
+
+	ret := []MusicInfo{}
+	if mp.CurNode != nil {
+		ret = append(ret, *mp.CurNode)
+	}
+	for n := mp.Playlist.list.Head(); n != nil; n = n.Next() {
+		fmt.Printf("n.val(): %v\n", **n.Val())
+		ret = append(ret, **n.Val())
+	}
+
+	return ret
+}

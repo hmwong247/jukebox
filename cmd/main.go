@@ -49,6 +49,7 @@ func main() {
 	mux.HandleFunc("POST /api/session", api.HandleNewSession)
 	mux.HandleFunc("GET /api/create", api.HandleCreateRoom)
 	mux.HandleFunc("GET /api/users", api.UserList)
+	mux.HandleFunc("GET /api/playlist", api.Playlist)
 	mux.HandleFunc("POST /api/enqueue", api.EnqueueURL)
 	mux.HandleFunc("GET /api/stream", api.StreamAudio)
 	mux.HandleFunc("GET /api/streamend", api.StreamEnd)

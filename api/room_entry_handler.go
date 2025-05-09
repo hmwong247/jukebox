@@ -254,3 +254,43 @@ func UserList(w http.ResponseWriter, r *http.Request) {
 
 	w.Write(json)
 }
+
+// route: "GET /api/playlist?sid="
+func Playlist(w http.ResponseWriter, r *http.Request) {
+	sid, err := decodeQueryID(r, "sid")
+	if err != nil {
+		http.Error(w, "", http.StatusBadRequest)
+		return
+	}
+
+	room.TokenMapMutex.RLock()
+	room.ClientMapMutex.RLock()
+	defer func() {
+		room.ClientMapMutex.RUnlock()
+		room.TokenMapMutex.RUnlock()
+	}()
+
+	var client *room.Client
+	if uid, ok := room.TokenMap[sid]; ok {
+		_client, ok := room.ClientMap[*uid]
+		if !ok {
+			slog.Info("client not found from sid", "sid", sid.String())
+			http.Error(w, "", http.StatusInternalServerError)
+			return
+		}
+		client = _client
+	} else {
+		slog.Info("token from client does not exists", "sid", sid.String())
+		http.Error(w, "", http.StatusForbidden)
+		return
+	}
+
+	musicInfoList := client.Hub.Player.MusicInfoList()
+	jsonList, err := json.Marshal(musicInfoList)
+	if err != nil {
+		slog.Error("playlist json encode error", "err", err)
+		http.Error(w, "", http.StatusInternalServerError)
+	}
+
+	w.Write(jsonList)
+}

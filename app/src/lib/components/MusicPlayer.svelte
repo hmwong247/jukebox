@@ -41,7 +41,20 @@
     }
 
     /**
+     * MP logic flow
+     * host:
+     * ___
+     * updateMP
+     * loadAudioAsHost
+     * onloadedmetadata
+     * onloadstart
+     * mpcanplay
+     * startSyncPeer
      *
+     * peer:
+     * ___
+     * onpeerstream
+     * loadAudioAsPeer
      */
 
     /*
@@ -103,6 +116,7 @@
     }
 
     function mpcanplay() {
+        rtc.lazyInitMPStream();
         const newTrack = mp.localStream.getTracks()[0];
         rtc.startSyncPeer(mp.currentTrack, newTrack, mp.hostStream);
         if (mp.currentTrack !== null) {
@@ -110,6 +124,9 @@
         }
         mp.hostStream.addTrack(newTrack);
         mp.currentTrack = newTrack;
+
+        const msg = { from: session.userID, payload: PEER_CMD.INIT };
+        rtc.allPeers(msg);
     }
 
     async function mpprefetch() {
@@ -134,11 +151,11 @@
         if (isHost) {
             mp.elem.addEventListener("canplay", mpcanplay, { once: true });
             mp.elem.addEventListener("timeupdate", mpprefetch);
-        }
 
+            mp.elem.play();
+            mp.running = true;
+        }
         // peers will run the mp after they recieved the MediaTrack from host, i.e. onpeerstream
-        mp.elem.play();
-        mp.running = true;
     }
 
     function onended() {

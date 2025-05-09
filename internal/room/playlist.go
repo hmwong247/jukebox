@@ -26,9 +26,10 @@ func (a *autoIncID) ID() int {
 
 type MusicInfo struct {
 	ID        int
-	URL       string
-	AudioByte []byte
-	InfoJson  ytdlp.InfoJson
+	URL       string `json:"-"`
+	AudioByte []byte `json:"-"`
+	// InfoJson  ytdlp.InfoJson
+	ytdlp.InfoJson
 }
 
 // type MusicInfo is not comparable,
