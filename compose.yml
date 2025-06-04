@@ -1,0 +1,13 @@
+services:
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - 8080:8080
+  ytdlpy:
+    build:
+      context: ./ytdlpy
+      dockerfile: Dockerfile
+    ports:
+      - 5000:5000 # debug
