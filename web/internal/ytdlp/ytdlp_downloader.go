@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/url"
+	"os"
 	"os/exec"
 )
 
@@ -16,11 +18,19 @@ const (
 )
 
 var (
-	YTDLP_OPT_STDOUT = []string{"-x", "-f", "bestaudio", "-o", "-"}
-
-	// YTDLP_OPT_THUMBNAIL = []string{"--skip-download", "--write-thumbnail"}
+	YTDLP_OPT_STDOUT   = []string{"-x", "-f", "bestaudio", "-o", "-"}
 	YTDLP_OPT_INFOJSON = []string{"--skip-download", "-j"}
 	JQ_OPT             = []string{"{fulltitle: .fulltitle, uploader: .uploader, thumbnail: .thumbnail, duration: .duration}"}
+
+	ytdlpySocket = func() string {
+		path := os.Getenv("YTDLPY_SOCKET_PATH")
+		if path == "" {
+			slog.Error("YTDLPY_SOCKET_PATH not found")
+			return ""
+
+		}
+		return path
+	}()
 )
 
 type InfoJson struct {
@@ -70,17 +80,6 @@ func DownloadAudio(rawURL string) ([]byte, error) {
 	}
 
 	return audioBytes, nil
-}
-
-func DownloadThumbnail(rawURL string) ([]byte, error) {
-	parsedURL, err := url.Parse(rawURL)
-	if err != nil {
-		errStr := fmt.Sprintf("url parse failed, err: %v, url: %v", err, parsedURL)
-		newErr := errors.New(errStr)
-		return []byte{}, newErr
-	}
-
-	return []byte{}, nil
 }
 
 func DownloadInfoJson(rawURL string) (InfoJson, error) {
@@ -154,6 +153,73 @@ func DownloadInfoJson(rawURL string) (InfoJson, error) {
 		errStr := fmt.Sprintf("json unmarshal error, err: %v", err)
 		newErr := errors.New(errStr)
 		return InfoJson{}, newErr
+	}
+	// slog.Debug("infoJson", "json", infoJson)
+
+	return infoJson, nil
+}
+
+/*
+	Downloading with embedded YTDLP in python
+*/
+
+func connectUDS(endpoint string) (*net.UnixConn, error) {
+	unixSocketAddr, err := net.ResolveUnixAddr("unix", endpoint)
+	if err != nil {
+		errf := fmt.Errorf("unix address resolve error", "err", err)
+		return &net.UnixConn{}, errf
+	}
+	conn, err := net.DialUnix("unix", nil, unixSocketAddr)
+	if err != nil {
+		errf := fmt.Errorf("USD connection error, err: %v", err)
+		return &net.UnixConn{}, errf
+	}
+
+	return conn, nil
+}
+
+type RPCInfoJsonRequest struct {
+	Type string
+	URL  string
+}
+
+func DownloadInfoJson2(rawURL string) (InfoJson, error) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		errf := fmt.Errorf("url parse failed, err: %v, url: %v", err, parsedURL)
+		return InfoJson{}, errf
+	}
+
+	// RPC to ytdlpy
+	request := RPCInfoJsonRequest{
+		Type: "json",
+		URL:  rawURL,
+	}
+	requestJson, err := json.Marshal(request)
+	if err != nil {
+		errf := fmt.Errorf("requestJson parse error, err: %v, url: %v", err, parsedURL)
+		return InfoJson{}, errf
+	}
+
+	conn, err := connectUDS(ytdlpySocket)
+	if err != nil {
+		return InfoJson{}, err
+	}
+	defer conn.Close()
+	conn.Write(requestJson)
+	conn.CloseWrite()
+
+	jsonBytes, err := io.ReadAll(conn)
+	if err != nil {
+		errf := fmt.Errorf("UDS read error", "err", err)
+		return InfoJson{}, errf
+	}
+	slog.Info("[UDS] recv: ", "jsonBytes", jsonBytes)
+
+	infoJson := InfoJson{}
+	if err := json.Unmarshal(jsonBytes, &infoJson); err != nil {
+		errf := fmt.Errorf("json unmarshal error, err: %v", err)
+		return InfoJson{}, errf
 	}
 	// slog.Debug("infoJson", "json", infoJson)
 

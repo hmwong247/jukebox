@@ -34,7 +34,7 @@ func (r *RequestJson) Process(workerctx context.Context) {
 		r.ErrCh <- r.Ctx.Err()
 		return
 	default:
-		json, err := DownloadInfoJson(r.URL)
+		json, err := DownloadInfoJson2(r.URL)
 		if err != nil {
 			slog.Info("[task] failed to fetch infojson", "err", err)
 			r.ErrCh <- err
