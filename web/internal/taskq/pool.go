@@ -1,4 +1,4 @@
-package mq
+package taskq
 
 import (
 	"context"
@@ -9,11 +9,6 @@ import (
 	"sync"
 
 	"github.com/bwmarrin/snowflake"
-)
-
-const (
-	MAX_CONCURRENT_WORKER_PER_POOL = 2
-	MAX_TASK_QUEUE_SIZE            = 16
 )
 
 var (
@@ -45,15 +40,15 @@ type WorkerPool struct {
 	taskq         chan Task
 }
 
-func NewWorkerPool(workernum uint, qbuffer int) (*WorkerPool, error) {
+func NewWorkerPool(workernum int, qbuffer int) (*WorkerPool, error) {
 	if workernum <= 0 {
 		return &WorkerPool{}, fmt.Errorf("number of workers should be non-zero +ve number, given: %v", workernum)
 	}
 	if qbuffer <= 0 {
 		return &WorkerPool{}, fmt.Errorf("number of buffers should be non-zero +ve number, given: %v", qbuffer)
 	}
-	workerNum := min(workernum, MAX_CONCURRENT_WORKER_PER_POOL)
-	qBuffer := min(qbuffer-1, MAX_TASK_QUEUE_SIZE)
+	// workerNum := min(workernum, MAX_CONCURRENT_WORKER_PER_POOL)
+	// qBuffer := min(qbuffer-1, MAX_TASK_QUEUE_SIZE)
 	id := PoolID.ID()
 	node, err := snowflake.NewNode(int64(id))
 	if err != nil {
@@ -65,9 +60,9 @@ func NewWorkerPool(workernum uint, qbuffer int) (*WorkerPool, error) {
 	return &WorkerPool{
 		ID:            id,
 		snowflakeNode: node,
-		workers:       make([]*Worker, 0, workerNum),
+		workers:       make([]*Worker, 0, workernum),
 		workerq:       make(chan chan Task),
-		taskq:         make(chan Task, qBuffer),
+		taskq:         make(chan Task, qbuffer),
 	}, nil
 }
 

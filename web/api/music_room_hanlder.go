@@ -3,8 +3,8 @@ package api
 import (
 	"context"
 	"log/slog"
-	"main/internal/mq"
 	"main/internal/room"
+	"main/internal/taskq"
 	"main/internal/ytdlp"
 	"net/http"
 	"strconv"
@@ -99,11 +99,11 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-ctx.Done():
 			slog.Debug("[api] json response ctx timeout")
-			taskStatusJson := mq.TaskStatus{
+			taskStatusJson := taskq.TaskStatus{
 				TaskID: taskID,
 				Status: "timeout",
 			}
-			msg := room.DirectMessage[mq.TaskStatus]{
+			msg := room.DirectMessage[taskq.TaskStatus]{
 				MsgType: room.MSG_EVENT_PLAYLIST,
 				To:      client.ID,
 				Data:    taskStatusJson,
@@ -112,11 +112,11 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 			return
 		case err := <-req.ErrCh:
 			slog.Error("[api] info json err", "req", req, "err", err)
-			taskStatusJson := mq.TaskStatus{
+			taskStatusJson := taskq.TaskStatus{
 				TaskID: taskID,
 				Status: "failed",
 			}
-			msg := room.DirectMessage[mq.TaskStatus]{
+			msg := room.DirectMessage[taskq.TaskStatus]{
 				MsgType: room.MSG_EVENT_PLAYLIST,
 				To:      client.ID,
 				Data:    taskStatusJson,
@@ -137,11 +137,11 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// responds ok to client
-			taskStatusJson := mq.TaskStatus{
+			taskStatusJson := taskq.TaskStatus{
 				TaskID: taskID,
 				Status: "ok",
 			}
-			dmsg := room.DirectMessage[mq.TaskStatus]{
+			dmsg := room.DirectMessage[taskq.TaskStatus]{
 				MsgType: room.MSG_EVENT_PLAYLIST,
 				To:      client.ID,
 				Data:    taskStatusJson,

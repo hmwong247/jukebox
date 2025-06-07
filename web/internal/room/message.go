@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"main/internal/mq"
+	"main/internal/taskq"
 	"main/internal/ytdlp"
 
 	"github.com/google/uuid"
@@ -100,7 +100,7 @@ func (bm *BroadcastMessage[T]) DebugMode() bool {
 }
 
 type DMData interface {
-	[]byte | mq.TaskStatus | MPStatus
+	[]byte | taskq.TaskStatus | MPStatus
 }
 
 type DirectMessage[T DMData] struct {

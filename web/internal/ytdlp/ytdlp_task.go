@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"main/internal/mq"
+	"main/internal/taskq"
+	"os"
+	"strconv"
 	"time"
 )
 
@@ -14,7 +16,41 @@ const (
 )
 
 var (
-	JsonDownloader, AudioDownloader *mq.WorkerPool
+	JsonDownloader, AudioDownloader *taskq.WorkerPool
+
+	MAX_CONCURRENT_WORKER_PER_POOL = func() int {
+		envar := os.Getenv("MAX_CONCURRENT_WORKER_PER_POOL")
+		var ret int
+		if envar == "" {
+			slog.Warn("Conncurrent download is not enabled")
+			ret = 1
+		} else {
+			_ret, err := strconv.Atoi(envar)
+			if err != nil {
+				slog.Error("Invalid env: MAX_CONCURRENT_WORKER_PER_POOL", "err", err)
+				ret = 1
+			}
+			ret = _ret
+		}
+		return ret
+	}()
+
+	MAX_TASK_QUEUE_SIZE = func() int {
+		envar := os.Getenv("MAX_TASK_QUEUE_SIZE")
+		var ret int
+		if envar == "" {
+			slog.Warn("Download queue is not configured, default to 1")
+			ret = 1
+		} else {
+			_ret, err := strconv.Atoi(envar)
+			if err != nil {
+				slog.Error("Invalid env: MAX_TASK_QUEUE_SIZE", "err", err)
+				ret = 1
+			}
+			ret = _ret
+		}
+		return ret
+	}()
 )
 
 type RequestJson struct {
@@ -34,7 +70,7 @@ func (r *RequestJson) Process(workerctx context.Context) {
 		r.ErrCh <- r.Ctx.Err()
 		return
 	default:
-		json, err := DownloadInfoJson2(r.URL)
+		json, err := DownloadInfoJson(r.URL)
 		if err != nil {
 			slog.Info("[task] failed to fetch infojson", "err", err)
 			r.ErrCh <- err
@@ -88,10 +124,10 @@ func (r *RequestAudio) String() string {
 }
 
 func init() {
-	// JsonDownloader, _ = mq.NewWorkerPool(mq.MAX_CONCURRENT_WORKER_PER_POOL, mq.MAX_TASK_QUEUE_SIZE)
-	// AudioDownloader, _ = mq.NewWorkerPool(mq.MAX_CONCURRENT_WORKER_PER_POOL, mq.MAX_TASK_QUEUE_SIZE)
+	JsonDownloader, _ = taskq.NewWorkerPool(MAX_CONCURRENT_WORKER_PER_POOL, MAX_TASK_QUEUE_SIZE)
+	AudioDownloader, _ = taskq.NewWorkerPool(MAX_CONCURRENT_WORKER_PER_POOL, MAX_TASK_QUEUE_SIZE)
 
 	// use less resources for testing
-	JsonDownloader, _ = mq.NewWorkerPool(2, 2)
-	AudioDownloader, _ = mq.NewWorkerPool(2, 2)
+	// JsonDownloader, _ = taskq.NewWorkerPool(2, 2)
+	// AudioDownloader, _ = taskq.NewWorkerPool(2, 2)
 }

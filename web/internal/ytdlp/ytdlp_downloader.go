@@ -2,27 +2,16 @@ package ytdlp
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/url"
 	"os"
-	"os/exec"
-)
-
-const (
-	CMD_YTDLP = "./third_party/yt-dlp/yt-dlp_linux"
-	CMD_JQ    = "jq"
 )
 
 var (
-	YTDLP_OPT_STDOUT   = []string{"-x", "-f", "bestaudio", "-o", "-"}
-	YTDLP_OPT_INFOJSON = []string{"--skip-download", "-j"}
-	JQ_OPT             = []string{"{fulltitle: .fulltitle, uploader: .uploader, thumbnail: .thumbnail, duration: .duration}"}
-
-	ytdlpySocket = func() string {
+	YTDLPY_SOCKET_PATH = func() string {
 		path := os.Getenv("YTDLPY_SOCKET_PATH")
 		if path == "" {
 			slog.Error("YTDLPY_SOCKET_PATH not found")
@@ -40,125 +29,6 @@ type InfoJson struct {
 	Duration  int
 }
 
-func DownloadAudio(rawURL string) ([]byte, error) {
-	parsedURL, err := url.Parse(rawURL)
-	if err != nil {
-		errStr := fmt.Sprintf("url parse failed, err: %v, url: %v", err, parsedURL)
-		newErr := errors.New(errStr)
-		return []byte{}, newErr
-	}
-
-	opt := append(YTDLP_OPT_STDOUT, parsedURL.String())
-	cmd := exec.Command(CMD_YTDLP, opt...)
-	stdout, err := cmd.StdoutPipe()
-
-	// slog.Debug("final cmd", "cmd", cmd)
-
-	if errors.Is(cmd.Err, exec.ErrDot) {
-		cmd.Err = nil
-	}
-	err = cmd.Start()
-	if err != nil {
-		errStr := fmt.Sprintf("cmd start error: %v", err)
-		newErr := errors.New(errStr)
-		return []byte{}, newErr
-	}
-
-	audioBytes, err := io.ReadAll(stdout)
-	if err != nil {
-		errStr := fmt.Sprintf("io read error: %v", err)
-		newErr := errors.New(errStr)
-		return []byte{}, newErr
-	}
-
-	if err := cmd.Wait(); err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
-			errStr := fmt.Sprintf("cmd wait error: %v", exitError)
-			newErr := errors.New(errStr)
-			return []byte{}, newErr
-		}
-	}
-
-	return audioBytes, nil
-}
-
-func DownloadInfoJson(rawURL string) (InfoJson, error) {
-	parsedURL, err := url.Parse(rawURL)
-	if err != nil {
-		errStr := fmt.Sprintf("url parse failed, err: %v, url: %v", err, parsedURL)
-		newErr := errors.New(errStr)
-		return InfoJson{}, newErr
-	}
-
-	opt := append(YTDLP_OPT_INFOJSON, parsedURL.String())
-	cmd1 := exec.Command(CMD_YTDLP, opt...)
-	cmd2 := exec.Command(CMD_JQ, JQ_OPT...)
-	// slog.Debug("final cmd", "cmd1", cmd1, "cmd2", cmd2)
-
-	// command piping
-	cmd2.Stdin, err = cmd1.StdoutPipe()
-	if err != nil {
-		errStr := fmt.Sprintf("cmd1.Stdoutpipe error, err: %v", err)
-		newErr := errors.New(errStr)
-		return InfoJson{}, newErr
-	}
-	finalStdout, err := cmd2.StdoutPipe()
-	if err != nil {
-		errStr := fmt.Sprintf("cmd2.Stdoutpipe error, err: %v", err)
-		newErr := errors.New(errStr)
-		return InfoJson{}, newErr
-	}
-
-	// start execute cmd
-	err = cmd1.Start()
-	if err != nil {
-		errStr := fmt.Sprintf("cmd1 start error, err: %v", err)
-		newErr := errors.New(errStr)
-		return InfoJson{}, newErr
-	}
-	err = cmd2.Start()
-	if err != nil {
-		errStr := fmt.Sprintf("cmd2 start error, err: %v", err)
-		newErr := errors.New(errStr)
-		return InfoJson{}, newErr
-	}
-	if err := cmd1.Wait(); err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
-			cmd2.Wait()
-			errStr := fmt.Sprintf("cmd1 wait error, exitError: %v", exitError)
-			newErr := errors.New(errStr)
-			return InfoJson{}, newErr
-		}
-	}
-
-	jsonBytes, err := io.ReadAll(finalStdout)
-	if err != nil {
-		errStr := fmt.Sprintf("finalStdout io error, err: %v", err)
-		newErr := errors.New(errStr)
-		return InfoJson{}, newErr
-	}
-
-	if err := cmd2.Wait(); err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
-			errStr := fmt.Sprintf("cmd2 wait error, exitError: %v", exitError)
-			newErr := errors.New(errStr)
-			return InfoJson{}, newErr
-		}
-	}
-
-	slog.Debug("cmd exited")
-
-	infoJson := InfoJson{}
-	if err := json.Unmarshal(jsonBytes, &infoJson); err != nil {
-		errStr := fmt.Sprintf("json unmarshal error, err: %v", err)
-		newErr := errors.New(errStr)
-		return InfoJson{}, newErr
-	}
-	// slog.Debug("infoJson", "json", infoJson)
-
-	return infoJson, nil
-}
-
 /*
 	Downloading with embedded YTDLP in python
 */
@@ -166,12 +36,12 @@ func DownloadInfoJson(rawURL string) (InfoJson, error) {
 func connectUDS(endpoint string) (*net.UnixConn, error) {
 	unixSocketAddr, err := net.ResolveUnixAddr("unix", endpoint)
 	if err != nil {
-		errf := fmt.Errorf("unix address resolve error err:%v", err)
+		errf := fmt.Errorf("[UDS] address resolve error, err:%v", err)
 		return &net.UnixConn{}, errf
 	}
 	conn, err := net.DialUnix("unix", nil, unixSocketAddr)
 	if err != nil {
-		errf := fmt.Errorf("USD connection error, err: %v", err)
+		errf := fmt.Errorf("[USD] connection error, err: %v", err)
 		return &net.UnixConn{}, errf
 	}
 
@@ -183,14 +53,19 @@ type RPCInfoJsonRequest struct {
 	URL  string
 }
 
-func DownloadInfoJson2(rawURL string) (InfoJson, error) {
+func DownloadInfoJson(rawURL string) (InfoJson, error) {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
 		errf := fmt.Errorf("url parse failed, err: %v, url: %v", err, parsedURL)
 		return InfoJson{}, errf
 	}
 
-	// RPC to ytdlpy
+	conn, err := connectUDS(YTDLPY_SOCKET_PATH)
+	if err != nil {
+		return InfoJson{}, err
+	}
+	defer conn.Close()
+
 	request := RPCInfoJsonRequest{
 		Type: "json",
 		URL:  rawURL,
@@ -200,21 +75,15 @@ func DownloadInfoJson2(rawURL string) (InfoJson, error) {
 		errf := fmt.Errorf("requestJson parse error, err: %v, url: %v", err, parsedURL)
 		return InfoJson{}, errf
 	}
-
-	conn, err := connectUDS(ytdlpySocket)
-	if err != nil {
-		return InfoJson{}, err
-	}
-	defer conn.Close()
 	conn.Write(requestJson)
 	conn.CloseWrite()
 
 	jsonBytes, err := io.ReadAll(conn)
 	if err != nil {
-		errf := fmt.Errorf("UDS read error, err:%v", err)
+		errf := fmt.Errorf("[UDS] read error, err:%v", err)
 		return InfoJson{}, errf
 	}
-	slog.Info("[UDS] recv: ", "jsonBytes", jsonBytes)
+	// slog.Debug("[UDS] recv: ", "jsonBytes", jsonBytes)
 
 	infoJson := InfoJson{}
 	if err := json.Unmarshal(jsonBytes, &infoJson); err != nil {
@@ -224,4 +93,38 @@ func DownloadInfoJson2(rawURL string) (InfoJson, error) {
 	// slog.Debug("infoJson", "json", infoJson)
 
 	return infoJson, nil
+}
+
+func DownloadAudio(rawURL string) ([]byte, error) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		errf := fmt.Errorf("url parse failed, err: %v, url: %v", err, parsedURL)
+		return []byte{}, errf
+	}
+
+	conn, err := connectUDS(YTDLPY_SOCKET_PATH)
+	if err != nil {
+		return []byte{}, err
+	}
+	defer conn.Close()
+
+	request := RPCInfoJsonRequest{
+		Type: "audio",
+		URL:  rawURL,
+	}
+	requestJson, err := json.Marshal(request)
+	if err != nil {
+		errf := fmt.Errorf("requestJson parse error, err: %v, url: %v", err, parsedURL)
+		return []byte{}, errf
+	}
+	conn.Write(requestJson)
+	conn.CloseWrite()
+
+	audioBytes, err := io.ReadAll(conn)
+	if err != nil {
+		errf := fmt.Errorf("[UDS] read error, err:%v", err)
+		return []byte{}, errf
+	}
+
+	return audioBytes, nil
 }

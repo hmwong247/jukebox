@@ -1,6 +1,5 @@
 x-env: &env
   YTDLPY_SOCKET_PATH: '/tmp/jukebox/ytdlpy.sock'
-  YTDLPY_SOCKET_DIR: '/tmp/jukebox'
 
 services:
   web:
@@ -9,16 +8,20 @@ services:
       dockerfile: Dockerfile
     ports:
       - 8080:8080
-    environment: *env
+    environment:
+      <<: *env
+      MAX_CONCURRENT_WORKER_PER_POOL: 2
+      MAX_TASK_QUEUE_SIZE: 4
     volumes:
       - shared_tmp:/tmp
   ytdlpy:
     build:
       context: ./ytdlpy
       dockerfile: Dockerfile
-    ports:
-      - 5000:5000 # debug
-    environment: *env
+    environment:
+      <<: *env
+      YTDLPY_SOCKET_DIR: '/tmp/jukebox'
+      YTDLPY_MAX_CONCURRENT_DL: 4
     volumes:
       - shared_tmp:/tmp
 
