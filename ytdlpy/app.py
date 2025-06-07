@@ -2,8 +2,8 @@ import io
 import json
 import os
 import socket
+from concurrent.futures import ThreadPoolExecutor
 import yt_dlp
-import asyncio
 
 
 # environment
@@ -33,7 +33,6 @@ def dl_infojson(url: str):
     ydl_opts = {}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         infojson = ydl.extract_info(url, download=False)
-        # infojson = ydl.extract_info(URL, download=False)
         infojson = ydl.sanitize_info(infojson)
 
         if infojson.get('_type') == 'playlist':
@@ -69,9 +68,37 @@ def dl_audio(urls):
 
 
 
-async def handle_socket(reader, writer):
-    msg = await reader.read() # read until EOF
-    data = json.loads(msg)
+# async def handle_socket(reader, writer):
+#     msg = await reader.read() # read until EOF
+#     data = json.loads(msg)
+#     request = data.get('Type')
+#     url = data.get('URL')
+#     resp = ''
+#     match request:
+#         case 'json':
+#             resp = dl_infojson(url)
+#         case 'audio':
+#             pass
+#         case _:
+#             pass
+#
+#     writer.write(json.dumps(resp).encode())
+#     writer.write_eof()
+#     await writer.drain()
+#
+#     writer.close()
+#     await writer.wait_closed()
+
+
+# async def uds_server():
+#     server = await asyncio.start_unix_server(handle_socket, path=SOCKET_PATH)
+#     async with server:
+#         await server.serve_forever()
+
+
+def handle_socket2(conn: socket.socket):
+    buf = conn.recv(1024)
+    data = json.loads(buf)
     request = data.get('Type')
     url = data.get('URL')
     resp = ''
@@ -83,33 +110,35 @@ async def handle_socket(reader, writer):
         case _:
             pass
 
-    writer.write(json.dumps(resp).encode())
-    writer.write_eof()
-    await writer.drain()
-
-    writer.close()
-    await writer.wait_closed()
+    conn.sendall(json.dumps(resp).encode())
+    conn.close()
 
 
-async def uds_server():
-    server = await asyncio.start_unix_server(handle_socket, path=SOCKET_PATH)
-    async with server:
-        await server.serve_forever()
+def uds_server2():
+    tpool = ThreadPoolExecutor(max_workers=MAX_SOCKET)
+    try:
+        if os.path.exists(SOCKET_PATH):
+            os.remove(SOCKET_PATH)
+
+        os.makedirs(SOCKET_DIR, exist_ok=True)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.bind(SOCKET_PATH)
+            s.listen(MAX_SOCKET)
+            # s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            # s.setblocking(False)
+
+            while True:
+                conn, addr = s.accept()
+                print(f'accpeted, {addr}')
+                tpool.submit(handle_socket2, conn)
+    except KeyboardInterrupt:
+        print('\nstopping ytdlpy')
+        tpool.shutdown(wait=False, cancel_futures=True)
 
 
 # main
 if __name__ == '__main__':
     print('running ytdlpy')
-
-    if os.path.exists(SOCKET_PATH):
-        os.remove(SOCKET_PATH)
-
-    os.makedirs(SOCKET_DIR, exist_ok=True)
-    # s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    # s.bind(SOCKET_PATH)
-    # s.setblocking(False)
-    # s.listen(MAX_SOCKET)
-
-    asyncio.run(uds_server())
+    uds_server2()
 
 

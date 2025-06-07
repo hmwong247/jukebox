@@ -166,7 +166,7 @@ func DownloadInfoJson(rawURL string) (InfoJson, error) {
 func connectUDS(endpoint string) (*net.UnixConn, error) {
 	unixSocketAddr, err := net.ResolveUnixAddr("unix", endpoint)
 	if err != nil {
-		errf := fmt.Errorf("unix address resolve error", "err", err)
+		errf := fmt.Errorf("unix address resolve error err:%v", err)
 		return &net.UnixConn{}, errf
 	}
 	conn, err := net.DialUnix("unix", nil, unixSocketAddr)
@@ -211,7 +211,7 @@ func DownloadInfoJson2(rawURL string) (InfoJson, error) {
 
 	jsonBytes, err := io.ReadAll(conn)
 	if err != nil {
-		errf := fmt.Errorf("UDS read error", "err", err)
+		errf := fmt.Errorf("UDS read error, err:%v", err)
 		return InfoJson{}, errf
 	}
 	slog.Info("[UDS] recv: ", "jsonBytes", jsonBytes)
