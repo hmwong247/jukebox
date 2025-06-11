@@ -1,6 +1,7 @@
 package ytdlp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -33,7 +34,12 @@ type InfoJson struct {
 	Downloading with embedded YTDLP in python
 */
 
-func connectUDS(endpoint string) (*net.UnixConn, error) {
+func connectUDS(ctx context.Context, endpoint string) (*net.UnixConn, error) {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		errf := fmt.Errorf("[UDS] recieved ctx with no specified timeout")
+		return nil, errf
+	}
 	unixSocketAddr, err := net.ResolveUnixAddr("unix", endpoint)
 	if err != nil {
 		errf := fmt.Errorf("[UDS] address resolve error, err:%v", err)
@@ -44,8 +50,21 @@ func connectUDS(endpoint string) (*net.UnixConn, error) {
 		errf := fmt.Errorf("[USD] connection error, err: %v", err)
 		return &net.UnixConn{}, errf
 	}
+	// enable socket timeout
+	conn.SetDeadline(deadline)
 
 	return conn, nil
+
+	// slog.Debug("connecting UDS", "timeout duration", deadline.Sub(time.Now()))
+	// conn, err := net.DialTimeout("unix", endpoint, deadline.Sub(time.Now()))
+	// if err != nil {
+	// 	errf := fmt.Errorf("[USD] connection error, err: %v", err)
+	// 	return &net.UnixConn{}, errf
+	// }
+	// 	// enable socket timeout
+	// 	conn.SetDeadline(deadline)
+	//
+	// return conn.(*net.UnixConn), nil
 }
 
 type RPCInfoJsonRequest struct {
@@ -53,14 +72,15 @@ type RPCInfoJsonRequest struct {
 	URL  string
 }
 
-func DownloadInfoJson(rawURL string) (InfoJson, error) {
+func DownloadInfoJson(ctx context.Context, rawURL string) (InfoJson, error) {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
 		errf := fmt.Errorf("url parse failed, err: %v, url: %v", err, parsedURL)
 		return InfoJson{}, errf
 	}
 
-	conn, err := connectUDS(YTDLPY_SOCKET_PATH)
+	conn, err := connectUDS(ctx, YTDLPY_SOCKET_PATH)
+	slog.Debug("connectUDS done")
 	if err != nil {
 		return InfoJson{}, err
 	}
@@ -95,14 +115,14 @@ func DownloadInfoJson(rawURL string) (InfoJson, error) {
 	return infoJson, nil
 }
 
-func DownloadAudio(rawURL string) ([]byte, error) {
+func DownloadAudio(ctx context.Context, rawURL string) ([]byte, error) {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
 		errf := fmt.Errorf("url parse failed, err: %v, url: %v", err, parsedURL)
 		return []byte{}, errf
 	}
 
-	conn, err := connectUDS(YTDLPY_SOCKET_PATH)
+	conn, err := connectUDS(ctx, YTDLPY_SOCKET_PATH)
 	if err != nil {
 		return []byte{}, err
 	}

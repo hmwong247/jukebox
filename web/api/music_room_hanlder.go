@@ -62,7 +62,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 	// respond 202 just to tell the client that the server has recieved
 	// the request which is being processed, the result will be sent with websocket
 	ctx, cancel := context.WithTimeout(context.Background(), ytdlp.TIMEOUT_JSON)
-	req := ytdlp.RequestJson{
+	req := ytdlp.RequestInfojson{
 		Ctx:   ctx,
 		URL:   pURL,
 		ErrCh: make(chan error),
@@ -91,7 +91,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// websocket: json response
-	// we would like to repond the client asap,
+	// we would like to respond the client asap,
 	// so the websocket response will be wrapped by a goroutine
 	// and close the http reponse writer
 	go func() {

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	TIMEOUT_JSON  = 30 * time.Second
+	TIMEOUT_JSON  = 10 * time.Second
 	TIMEOUT_AUDIO = 1 * time.Minute
 )
 
@@ -53,7 +53,7 @@ var (
 	}()
 )
 
-type RequestJson struct {
+type RequestInfojson struct {
 	Ctx      context.Context
 	ErrCh    chan error
 	FinCh    chan struct{}
@@ -61,7 +61,7 @@ type RequestJson struct {
 	Response InfoJson
 }
 
-func (r *RequestJson) Process(workerctx context.Context) {
+func (r *RequestInfojson) Process(workerctx context.Context) {
 	select {
 	case <-workerctx.Done():
 		r.ErrCh <- workerctx.Err()
@@ -70,9 +70,16 @@ func (r *RequestJson) Process(workerctx context.Context) {
 		r.ErrCh <- r.Ctx.Err()
 		return
 	default:
-		json, err := DownloadInfoJson(r.URL)
+		json, err := DownloadInfoJson(r.Ctx, r.URL)
 		if err != nil {
 			slog.Info("[task] failed to fetch infojson", "err", err)
+			select {
+			case <-r.Ctx.Done():
+				// check closed channel, ctx already timeout on the top-level
+				slog.Debug("[task] ctx already timeout on the top-level")
+				return
+			default:
+			}
 			r.ErrCh <- err
 			return
 		}
@@ -84,7 +91,7 @@ func (r *RequestJson) Process(workerctx context.Context) {
 	}
 }
 
-func (r *RequestJson) String() string {
+func (r *RequestInfojson) String() string {
 	return fmt.Sprintf("request: json, url: %v", r.URL)
 }
 
@@ -105,9 +112,16 @@ func (r *RequestAudio) Process(workerctx context.Context) {
 		r.ErrCh <- r.Ctx.Err()
 		return
 	default:
-		audioBytes, err := DownloadAudio(r.URL)
+		audioBytes, err := DownloadAudio(r.Ctx, r.URL)
 		if err != nil {
-			slog.Info("[task] failed to fetch infojson", "err", err)
+			slog.Info("[task] failed to fetch audio", "err", err)
+			select {
+			case <-r.Ctx.Done():
+				// check closed channel, ctx already timeout on the top-level
+				slog.Debug("[task] ctx already timeout on the top-level")
+				return
+			default:
+			}
 			r.ErrCh <- err
 			return
 		}

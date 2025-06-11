@@ -7,6 +7,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 import yt_dlp
 
+"""
+This python application is purely for embedding yt-dlp and socket communication
+
+The YTDLP options can be found on: https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/YoutubeDL.py#183
+"""
+
 # environment
 MAX_CONCURRENT_DL = int(os.environ.get('YTDLPY_MAX_CONCURRENT_DL', 1))
 SOCKET_DIR = os.environ.get('YTDLPY_SOCKET_DIR', '')
@@ -15,6 +21,10 @@ print(f'\nDEBUG: YTDLPY ENVIRONMENT VARIABLE')
 print(f'YTDLPY_MAX_CONCURRENT_DL: {MAX_CONCURRENT_DL}')
 print(f'YTDLPY_SOCKET_DIR: {SOCKET_DIR}')
 print(f'YTDLPY_SOCKET_PATH: {SOCKET_PATH}')
+
+
+# const
+AUDIO_CODEC = 'm4a'
 
 
 def dl_infojson(url: str) -> dict:
@@ -34,42 +44,79 @@ def dl_infojson(url: str) -> dict:
     ydl_opts = {
         'quiet': True,
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        infojson = ydl.extract_info(url, download=False)
-        infojson = ydl.sanitize_info(infojson)
+    ret = {}
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            infojson = ydl.extract_info(url, download=False)
+            print(f'downloaded infojson: {infojson}')
+            infojson = ydl.sanitize_info(infojson)
+            print(f'sanitized infojson: {infojson}')
 
-        if infojson.get('_type') == 'playlist':
-            ret = [extractKeys(entry) for entry in infojson.get('entries')]
-        else:
-            ret = extractKeys(infojson)
+            if infojson.get('_type') == 'playlist':
+                ret = [extractKeys(entry) for entry in infojson.get('entries')]
+            else:
+                ret = extractKeys(infojson)
+    except:
+        print(f'except')
+
+    # with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    #     infojson = ydl.extract_info(url, download=False)
+    #     print(f'downloaded infojson: {infojson}')
+    #     infojson = ydl.sanitize_info(infojson)
+    #     print(f'sanitized infojson: {infojson}')
+    #
+    #     if infojson.get('_type') == 'playlist':
+    #         ret = [extractKeys(entry) for entry in infojson.get('entries')]
+    #     else:
+    #         ret = extractKeys(infojson)
 
     return ret
 
 
 def dl_audio(url: str):
     buffer = io.BytesIO()
-    done_event = threading.Event()
+    filepath = ''
+    event_fin = threading.Event()
 
-    def callback(d: dict):
-        if(d.get('status') == "finished"):
+    def hook(d: dict):
+        if(d.get('status') == 'finished'):
+            nonlocal filepath
             filepath = d.get('filename', '')
-            with open(filepath, 'rb') as f:
-                buffer.write(f.read())
-            os.remove(filepath)
-            done_event.set()
+            print(f'downloaded size: {d.get('downloaded_bytes')}')
+
+    def pp_hook(d: dict):
+        # print(f'pp_hook, d: {d.get('status')}, pp name: {d.get('postprocessor')}')
+        if(d.get('postprocessor') == 'MoveFiles' and d.get('status') == 'finished'):
+            audio_filepath = f'{os.path.splitext(filepath)[0]}.{AUDIO_CODEC}'
+            try:
+                with open(audio_filepath, 'rb') as f:
+                    buffer.write(f.read())
+
+                # original file is removed automatically by yt-dlp, we only need to remove the extracted file
+                os.remove(audio_filepath)
+            except OSError as err:
+                print(err)
+            finally:
+                event_fin.set()
+
 
     ydl_opts = {
-        'format': 'bestaudio',
+        'format': 'worstaudio',
         'restrictfilenames': True,
         'outtmpl': f'{SOCKET_DIR}/%(timestamp)s.%(id)s.%(fulltitle)s.%(ext)s',
-        'progress_hooks': [callback],
-        'quiet': True,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': AUDIO_CODEC,
+        }],
+        'progress_hooks': [hook],
+        'postprocessor_hooks': [pp_hook],
+        # 'quiet': True,
     }
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download(url)
 
-    done_event.wait()
+    event_fin.wait()
     return buffer
 
 

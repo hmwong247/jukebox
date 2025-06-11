@@ -2,7 +2,6 @@ package taskq
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -47,22 +46,21 @@ func NewWorkerPool(workernum int, qbuffer int) (*WorkerPool, error) {
 	if qbuffer <= 0 {
 		return &WorkerPool{}, fmt.Errorf("number of buffers should be non-zero +ve number, given: %v", qbuffer)
 	}
-	// workerNum := min(workernum, MAX_CONCURRENT_WORKER_PER_POOL)
-	// qBuffer := min(qbuffer-1, MAX_TASK_QUEUE_SIZE)
+	workerNum := max(workernum, 1)
+	qBuffer := max(qbuffer-1, 0)
 	id := PoolID.ID()
 	node, err := snowflake.NewNode(int64(id))
 	if err != nil {
-		errStr := fmt.Sprintf("failed to create snowflake node, err: %v", err)
-		newErr := errors.New(errStr)
-		return &WorkerPool{}, newErr
+		errf := fmt.Errorf("failed to create snowflake node, err: %v", err)
+		return &WorkerPool{}, errf
 	}
 
 	return &WorkerPool{
 		ID:            id,
 		snowflakeNode: node,
-		workers:       make([]*Worker, 0, workernum),
+		workers:       make([]*Worker, 0, workerNum),
 		workerq:       make(chan chan Task),
-		taskq:         make(chan Task, qbuffer),
+		taskq:         make(chan Task, qBuffer),
 	}, nil
 }
 
