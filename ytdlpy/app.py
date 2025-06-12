@@ -48,9 +48,7 @@ def dl_infojson(url: str) -> dict:
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             infojson = ydl.extract_info(url, download=False)
-            print(f'downloaded infojson: {infojson}')
             infojson = ydl.sanitize_info(infojson)
-            print(f'sanitized infojson: {infojson}')
 
             if infojson.get('_type') == 'playlist':
                 ret = [extractKeys(entry) for entry in infojson.get('entries')]
@@ -58,17 +56,6 @@ def dl_infojson(url: str) -> dict:
                 ret = extractKeys(infojson)
     except:
         print(f'except')
-
-    # with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-    #     infojson = ydl.extract_info(url, download=False)
-    #     print(f'downloaded infojson: {infojson}')
-    #     infojson = ydl.sanitize_info(infojson)
-    #     print(f'sanitized infojson: {infojson}')
-    #
-    #     if infojson.get('_type') == 'playlist':
-    #         ret = [extractKeys(entry) for entry in infojson.get('entries')]
-    #     else:
-    #         ret = extractKeys(infojson)
 
     return ret
 

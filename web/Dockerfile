@@ -25,6 +25,7 @@ RUN CGO_ENABLED=0 go build -v -o ./main ./cmd/main.go
 
 ### stage: run
 FROM scratch
+WORKDIR /web_app
 COPY --from=builder /src/app/dist ./app/dist
 COPY --from=builder /src/main ./main
 

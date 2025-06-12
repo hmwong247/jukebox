@@ -67,28 +67,6 @@ func HandleRoot(w http.ResponseWriter, r *http.Request) {
 // route: "GET /home"
 func HandleDefault(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "app/dist/index.html")
-
-	// unixSocketAddr, err := net.ResolveUnixAddr("unix", ytdlpySocket)
-	// if err != nil {
-	// 	slog.Error("unix address resolve error", "err", err)
-	// 	return
-	// }
-	// conn, err := net.DialUnix("unix", nil, unixSocketAddr)
-	// if err != nil {
-	// 	slog.Error("UDS connection error", "err", err)
-	// 	return
-	// }
-	// defer conn.Close()
-	//
-	// conn.Write([]byte("line 1"))
-	// conn.Write([]byte("line 2"))
-	// conn.CloseWrite() // this is needed for python, equivalent to writer.write_eof()
-	// data, err := io.ReadAll(conn)
-	// if err != nil {
-	// 	slog.Error("UDS read error", "err", err)
-	// 	return
-	// }
-	// slog.Info("[UDS] recv: ", "data", data)
 }
 
 // route: "GET /join?rid="

@@ -54,17 +54,6 @@ func connectUDS(ctx context.Context, endpoint string) (*net.UnixConn, error) {
 	conn.SetDeadline(deadline)
 
 	return conn, nil
-
-	// slog.Debug("connecting UDS", "timeout duration", deadline.Sub(time.Now()))
-	// conn, err := net.DialTimeout("unix", endpoint, deadline.Sub(time.Now()))
-	// if err != nil {
-	// 	errf := fmt.Errorf("[USD] connection error, err: %v", err)
-	// 	return &net.UnixConn{}, errf
-	// }
-	// 	// enable socket timeout
-	// 	conn.SetDeadline(deadline)
-	//
-	// return conn.(*net.UnixConn), nil
 }
 
 type RPCInfoJsonRequest struct {
