@@ -54,8 +54,8 @@ def dl_infojson(url: str) -> dict:
                 ret = [extractKeys(entry) for entry in infojson.get('entries')]
             else:
                 ret = extractKeys(infojson)
-    except:
-        print(f'except')
+    except Exception as e:
+        ret = {'Err': f'{e}'}
 
     return ret
 

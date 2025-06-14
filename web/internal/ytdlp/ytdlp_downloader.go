@@ -28,6 +28,7 @@ type InfoJson struct {
 	Uploader  string
 	Thumbnail string
 	Duration  int
+	Err       string // error from ytdlpy
 }
 
 /*
@@ -69,7 +70,6 @@ func DownloadInfoJson(ctx context.Context, rawURL string) (InfoJson, error) {
 	}
 
 	conn, err := connectUDS(ctx, YTDLPY_SOCKET_PATH)
-	slog.Debug("connectUDS done")
 	if err != nil {
 		return InfoJson{}, err
 	}
@@ -92,7 +92,7 @@ func DownloadInfoJson(ctx context.Context, rawURL string) (InfoJson, error) {
 		errf := fmt.Errorf("[UDS] read error, err:%v", err)
 		return InfoJson{}, errf
 	}
-	// slog.Debug("[UDS] recv: ", "jsonBytes", jsonBytes)
+	slog.Debug("[UDS] recv: ", "jsonBytes", jsonBytes)
 
 	infoJson := InfoJson{}
 	if err := json.Unmarshal(jsonBytes, &infoJson); err != nil {
@@ -100,6 +100,11 @@ func DownloadInfoJson(ctx context.Context, rawURL string) (InfoJson, error) {
 		return InfoJson{}, errf
 	}
 	// slog.Debug("infoJson", "json", infoJson)
+	if infoJson.Err != "" {
+		slog.Debug("infoJson.Err", "err", infoJson.Err)
+		errf := fmt.Errorf("ytdlpy error: %v", infoJson.Err)
+		return InfoJson{}, errf
+	}
 
 	return infoJson, nil
 }
