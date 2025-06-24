@@ -163,7 +163,6 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 			client.Hub.BroadcastMsg(&msg)
 
 			// notify hub
-			// client.Hub.Player.AddedSong <- struct{}{}
 			client.SignalMPAdd()
 		}
 	}()
@@ -184,6 +183,8 @@ func StreamAudio(w http.ResponseWriter, r *http.Request) {
 	slog.Debug("[api] stream", "mp status", client.Hub.Player)
 
 	// byte serve the audio
+	client.Hub.Player.ByteLock.Lock()
+	defer client.Hub.Player.ByteLock.Unlock()
 	reader := client.Hub.Player.AudioReader
 	if reader == nil {
 		slog.Warn("byte reader is nil", "hub id", client.Hub.B64ID(), "client id", client.B64ID())

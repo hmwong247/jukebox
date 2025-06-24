@@ -12,25 +12,26 @@ import (
 
 // debug
 func (mp *MusicPlayer) String() string {
-	var curplaying string
+	var curPlaying string
+	var curID int
 	if mp.CurNode != nil {
-		curplaying = mp.CurNode.InfoJson.FullTitle
+		curPlaying = mp.CurNode.InfoJson.FullTitle
+		curID = mp.CurNode.ID
 	} else {
-		curplaying = "nil"
+		curPlaying = "nil"
+		curID = -1
 	}
-	var prefetched bool = false
-	if mp.Playlist.Size() > 0 && len(mp.Playlist.Head().AudioByte) > 0 {
-		prefetched = true
-	}
-	str := fmt.Sprintf("MP STATUS - currently playing: %v, prefetched: %v", curplaying, prefetched)
+	str := fmt.Sprintf("[MP STATUS] - playing: {ID: %v} {%v}", curID, curPlaying)
 
 	return str
 }
 
+// methods are not safe by default
 type MusicPlayer struct {
 	hub         *Hub // maybe no need to keep reference
 	Playlist    *Playlist
 	fetchLock   *sync.Mutex
+	ByteLock    *sync.Mutex
 	CurNode     *MusicInfo
 	AudioReader *bytes.Reader
 
@@ -52,6 +53,7 @@ func CreateMusicPlayer() *MusicPlayer {
 	return &MusicPlayer{
 		Playlist:    playlist,
 		fetchLock:   &sync.Mutex{},
+		ByteLock:    &sync.Mutex{}, // hold back api access
 		CurNode:     nil,
 		AudioReader: nil,
 
@@ -86,7 +88,9 @@ func (mp *MusicPlayer) Run(ctx context.Context, h *Hub) {
 
 		case <-mp.AddedSong:
 			// slog.Debug("[mp] added", "status", mp)
+			mp.fetchLock.Lock()
 			mp.checkState(ctx)
+			mp.fetchLock.Unlock()
 
 		case <-mp.NextSong:
 			mp.fetchLock.Lock()
@@ -104,8 +108,10 @@ func (mp *MusicPlayer) Run(ctx context.Context, h *Hub) {
 			go func() {
 				if mp.Playlist.Size() > 0 {
 					mp.fetchLock.Lock()
+					mp.ByteLock.Lock()
 					node := mp.Playlist.Head()
 					mp.download(ctx, node)
+					mp.ByteLock.Unlock()
 					mp.fetchLock.Unlock()
 				}
 				// slog.Debug("[mp] preload", "status", mp)
@@ -123,12 +129,10 @@ func (mp *MusicPlayer) checkState(mpctx context.Context) {
 			return
 		}
 
-		mp.fetchLock.Lock()
 		if len(node.AudioByte) == 0 {
 			mp.download(mpctx, node)
 			mp.next()
 		}
-		mp.fetchLock.Unlock()
 	}
 }
 

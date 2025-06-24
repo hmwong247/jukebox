@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import sys
 import socket
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -17,10 +18,13 @@ The YTDLP options can be found on: https://github.com/yt-dlp/yt-dlp/blob/master/
 MAX_CONCURRENT_DL = int(os.environ.get('YTDLPY_MAX_CONCURRENT_DL', 1))
 SOCKET_DIR = os.environ.get('YTDLPY_SOCKET_DIR', '')
 SOCKET_PATH = os.environ.get('YTDLPY_SOCKET_PATH', '')
-print(f'\nDEBUG: YTDLPY ENVIRONMENT VARIABLE')
-print(f'YTDLPY_MAX_CONCURRENT_DL: {MAX_CONCURRENT_DL}')
-print(f'YTDLPY_SOCKET_DIR: {SOCKET_DIR}')
-print(f'YTDLPY_SOCKET_PATH: {SOCKET_PATH}')
+
+
+def print_env():
+    print(f'\nDEBUG: YTDLPY ENVIRONMENT VARIABLE')
+    print(f'YTDLPY_MAX_CONCURRENT_DL: {MAX_CONCURRENT_DL}')
+    print(f'YTDLPY_SOCKET_DIR: {SOCKET_DIR}')
+    print(f'YTDLPY_SOCKET_PATH: {SOCKET_PATH}')
 
 
 # const
@@ -38,7 +42,7 @@ def dl_infojson(url: str) -> dict:
         json = {}
         for key in info_keys:
             json[key] = entry.get(key)
-        
+
         return json
 
     ydl_opts = {
@@ -86,9 +90,18 @@ def dl_audio(url: str):
             finally:
                 event_fin.set()
 
+    """
+    extractor_args is a workaround solution for HTTP 403 when fetching HLS fragments
 
+    https://github.com/yt-dlp/yt-dlp/issues/13511#issuecomment-2993001328
+    """
     ydl_opts = {
         'format': 'worstaudio',
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['default','-ios'],
+            },
+        },
         'restrictfilenames': True,
         'outtmpl': f'{SOCKET_DIR}/%(timestamp)s.%(id)s.%(fulltitle)s.%(ext)s',
         'postprocessors': [{
@@ -148,6 +161,8 @@ def uds_server():
 # main
 if __name__ == '__main__':
     print('running ytdlpy')
+    print_env()
+    sys.stdout.flush()
     uds_server()
 
 
