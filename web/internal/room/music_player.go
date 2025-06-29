@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"main/internal/ytdlp"
+	"main/utils/weaksync"
 	"net/http"
 	"sync"
 )
@@ -31,7 +32,7 @@ type MusicPlayer struct {
 	hub         *Hub // maybe no need to keep reference
 	Playlist    *Playlist
 	fetchLock   *sync.Mutex
-	ByteLock    *sync.Mutex
+	NodeWGCnt   *weaksync.WaitGroupCnt
 	CurNode     *MusicInfo
 	AudioReader *bytes.Reader
 
@@ -53,7 +54,7 @@ func CreateMusicPlayer() *MusicPlayer {
 	return &MusicPlayer{
 		Playlist:    playlist,
 		fetchLock:   &sync.Mutex{},
-		ByteLock:    &sync.Mutex{}, // hold back api access
+		NodeWGCnt:   weaksync.CreateWaitGroupCnt(),
 		CurNode:     nil,
 		AudioReader: nil,
 
@@ -89,7 +90,7 @@ func (mp *MusicPlayer) Run(ctx context.Context, h *Hub) {
 		case <-mp.AddedSong:
 			// slog.Debug("[mp] added", "status", mp)
 			mp.fetchLock.Lock()
-			mp.checkState(ctx)
+			mp.lazyInit(ctx)
 			mp.fetchLock.Unlock()
 
 		case <-mp.NextSong:
@@ -99,8 +100,10 @@ func (mp *MusicPlayer) Run(ctx context.Context, h *Hub) {
 			if mp.Playlist.Size() > 0 {
 				// the node could be preloading
 				mp.next()
+				mp.NodeWGCnt.Done()
 			}
 			mp.fetchLock.Unlock()
+
 			// slog.Debug("[mp] next", "status", mp)
 
 		case <-mp.Preload:
@@ -108,10 +111,8 @@ func (mp *MusicPlayer) Run(ctx context.Context, h *Hub) {
 			go func() {
 				if mp.Playlist.Size() > 0 {
 					mp.fetchLock.Lock()
-					mp.ByteLock.Lock()
 					node := mp.Playlist.Head()
 					mp.download(ctx, node)
-					mp.ByteLock.Unlock()
 					mp.fetchLock.Unlock()
 				}
 				// slog.Debug("[mp] preload", "status", mp)
@@ -120,7 +121,7 @@ func (mp *MusicPlayer) Run(ctx context.Context, h *Hub) {
 	}
 }
 
-func (mp *MusicPlayer) checkState(mpctx context.Context) {
+func (mp *MusicPlayer) lazyInit(mpctx context.Context) {
 	if mp.CurNode == nil {
 		// init state
 		node := mp.Playlist.Head()
@@ -132,6 +133,10 @@ func (mp *MusicPlayer) checkState(mpctx context.Context) {
 		if len(node.AudioByte) == 0 {
 			mp.download(mpctx, node)
 			mp.next()
+		}
+
+		if mp.NodeWGCnt.Count() > 0 {
+			mp.NodeWGCnt.Done()
 		}
 	}
 }

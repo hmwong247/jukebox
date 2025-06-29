@@ -1,5 +1,4 @@
 // external library
-import htmx from "htmx.org"
 import SimplePeer from "simple-peer";
 
 // global state
@@ -51,7 +50,6 @@ addEventListener("DOMContentLoaded", async () => {
 
 // this is detached for later use after bootstrap
 async function onDOMContentLoaded() {
-	//htmx.logAll()
 }
 
 /*==============================================================================
@@ -183,13 +181,6 @@ async function requestNewRoom(event, form) {
 		return
 	}
 
-	// render the lobby page
-	// const lobbyPath = API_PATH.LOBBY + "?sid=" + session.sessionID
-	// await htmx.ajax("get", lobbyPath, { target: "#div_swap", })
-	// history.pushState({}, "", API_PATH.LOBBY)
-	// swapUsername(session.username)
-	// swapInviteLink(document.querySelector("#room_id").innerHTML)
-
 	await fetchUserList().then(data => {
 		for (const id in data) {
 			session.userList[id] = data[id]
@@ -231,13 +222,6 @@ async function requestJoinRoom(event, form) {
 		console.error(err)
 		return
 	}
-
-	// render the lobby page
-	// const lobbyPath = API_PATH.LOBBY + "?sid=" + session.sessionID
-	// await htmx.ajax("get", lobbyPath, { target: "#div_swap", }).catch(err => { console.error(err); return })
-	// history.pushState({}, "", API_PATH.LOBBY)
-	// swapUsername(session.username)
-	// swapInviteLink(document.querySelector("#room_id").innerHTML)
 
 	await fetchPlaylist().then(data => {
 		session.playlist = data
@@ -365,11 +349,6 @@ function updatePeerConnection(msg) {
 /*==============================================================================
 	UI/UX related functions
 */
-
-// redirect to home page
-function autoResetPage() {
-	htmx.ajax("get", API_PATH.HOME, { target: "#div_swap" }).catch(err => { console.error(err); return })
-}
 
 /*==============================================================================
 	web audio

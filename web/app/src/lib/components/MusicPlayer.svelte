@@ -158,7 +158,7 @@
         // peers will run the mp after they recieved the MediaTrack from host, i.e. onpeerstream
     }
 
-    function onended() {
+    async function onended() {
         console.log(`ended`);
 
         if (isHost) {
@@ -173,7 +173,7 @@
 
             // host will fetch the next music
             const url = API_PATH.STREAM_END + "?sid=" + session.sessionID;
-            const response = fetch(url);
+            const response = await fetch(url);
             // .then wait for server to reponse the next audio is ready if the queue is not size of 0
 
             if (session.playlist.length > 0) {
