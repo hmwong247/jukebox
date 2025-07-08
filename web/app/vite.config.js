@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import tailwindcss from '@tailwindcss/vite'
+import path from 'path'
 
 const DEV_ORIGIN = "http://localhost:8080"
 
@@ -31,8 +32,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      // ...
       "simple-peer": "simple-peer/simplepeer.min.js",
+      "@lib": path.resolve(__dirname, "src/scripts"),
+      "@components": path.resolve(__dirname, "src/lib/components"),
     },
   },
 })

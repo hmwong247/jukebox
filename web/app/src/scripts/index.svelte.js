@@ -1,6 +1,10 @@
 // external library
 import SimplePeer from "simple-peer";
 
+/**
+ * @typedef {{ID: string, FullTitle: string, Uploader: string, Thumbnail: string, Duration: string}} InfoJson
+ */
+
 // global state
 const session = $state({
 	sessionID: null,
@@ -8,6 +12,7 @@ const session = $state({
 	username: "user",
 	/** @type {Object.<string, {name: string, host: boolean}>} userList */
 	userList: {},
+	/** @type {Array.<InfoJson>} */
 	playlist: [],
 	userID: null,
 	hostID: null,
@@ -319,7 +324,6 @@ function updatePlaylist(msg) {
 		case "add":
 			delete msg.Data['Cmd']
 			session.playlist.push(msg.Data)
-			// swapPlaylist(msg.Data)
 			break
 		case "remove":
 			break
