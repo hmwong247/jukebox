@@ -158,8 +158,15 @@ def uds_server():
         tpool.shutdown(wait=False, cancel_futures=True)
 
 
+def auto_update():
+    import subprocess
+    print('updating yt-dlp')
+    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--upgrade', 'yt-dlp'])
+
+
 # main
 if __name__ == '__main__':
+    auto_update()
     print('running ytdlpy')
     print_env()
     sys.stdout.flush()
