@@ -4,6 +4,7 @@ ___
 - https://www.youtube.com/watch?v=fDNNn9polrI
 - https://www.youtube.com/watch?v=UxwTIJ03f2g
 - https://www.youtube.com/watch?v=dQw4w9WgXcQ
+- https://www.youtube.com/watch?v=06TlZMQf2UA
 
 for testing quality
 - https://www.youtube.com/watch?v=xWMbfvYZ_SU
