@@ -100,8 +100,8 @@ func (mp *MusicPlayer) Run(ctx context.Context, h *Hub) {
 			if mp.Playlist.Size() > 0 {
 				// the node could be preloading
 				mp.next()
-				mp.NodeWGCnt.Done()
 			}
+			mp.NodeWGCnt.Done()
 			mp.fetchLock.Unlock()
 
 			// slog.Debug("[mp] next", "status", mp)
