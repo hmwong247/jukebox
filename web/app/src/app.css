@@ -65,6 +65,10 @@ button:focus-visible {
 }
 
 @layer components {
+  .current-user-list {
+    @apply w-auto h-26 overflow-x-auto bg-gray-600
+  }
+ 
   .music-queue-row {
     @apply min-w-[300px]
   }

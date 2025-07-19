@@ -1,12 +1,12 @@
 <script>
 	// component
-	import UserProfile from "./lib/components/UserProfile.svelte";
-	import CurrentRoom from "./lib/components/CurrentRoom.svelte";
-	import MusicPlayer from "./lib/components/MusicPlayer.svelte";
-	import MusicQueue from "./lib/components/MusicQueue.svelte";
+	import UserProfile from "@components/UserProfile.svelte";
+	import CurrentRoom from "@components/CurrentRoom.svelte";
+	import MusicPlayer from "@components/MusicPlayer.svelte";
+	import MusicQueue from "@components/MusicQueue.svelte";
 
 	// internal library
-	import { session } from "./scripts/index.svelte.js";
+	import { session } from "@lib/index.svelte.js";
 
 	// debug
 	// $inspect(`app: `, session)

@@ -1,5 +1,7 @@
 <script>
 	import { session, API_PATH } from "../../scripts/index.svelte.js";
+	import { minidenticon } from "minidenticons";
+	import tippy from "tippy.js";
 
 	function copyLink() {
 		const link = document.querySelector("#room_id").innerHTML;
@@ -29,7 +31,8 @@
 		}
 	}
 
-	// state
+	/* state */
+
 	let hostname = $derived.by(() => {
 		// do not index a reactive state
 		for (const id in session.userList) {
@@ -42,6 +45,20 @@
 	let capacity = $derived.by(() => {
 		return Object.keys(session.userList).length;
 	});
+
+	/* effect */
+
+	function tooltip(elem, data) {
+		$effect(() => {
+			const tooltip = tippy(elem, {
+				interactive: true,
+				duration: 5000,
+				content: `${data.name}<br>${data.id}`,
+			});
+
+			// return tooltip.destroy;
+		});
+	}
 </script>
 
 <div>
@@ -66,18 +83,17 @@
 		<br />
 	</article>
 
-	<ul id="room_user_list" class="current_user_list">
+	<section id="room_user_list" class="current-user-list flex overflow-auto">
 		{#each Object.entries(session.userList) as [id, val]}
-			<li {id}>user name: {val.name}<br />id: {id}</li>
+			<div class="flex flex-col items-center bg-gray-300 size-12 m-3">
+				<!-- <li {id}>user name: {val.name}<br />id: {id}</li> -->
+				<minidenticon-svg
+					class="inline-block size-12"
+					username={val.name + "-" + id}
+					use:tooltip={{ id: id, name: val.name }}
+				></minidenticon-svg>
+				<p>{val.name}</p>
+			</div>
 		{/each}
-	</ul>
+	</section>
 </div>
-
-<style>
-	.current_user_list {
-		width: auto;
-		height: 120px;
-		overflow: auto;
-		background-color: rgb(65, 104, 117);
-	}
-</style>
