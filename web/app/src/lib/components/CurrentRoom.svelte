@@ -1,6 +1,7 @@
 <script>
 	import { session, API_PATH } from "../../scripts/index.svelte.js";
-	import { minidenticon } from "minidenticons";
+	import Minidenticon from "./Minidenticon.svelte";
+
 	import tippy from "tippy.js";
 
 	function copyLink() {
@@ -52,8 +53,7 @@
 		$effect(() => {
 			const tooltip = tippy(elem, {
 				interactive: true,
-				duration: 5000,
-				content: `${data.name}<br>${data.id}`,
+				content: data.id,
 			});
 
 			// return tooltip.destroy;
@@ -85,15 +85,41 @@
 
 	<section id="room_user_list" class="current-user-list flex overflow-auto">
 		{#each Object.entries(session.userList) as [id, val]}
-			<div class="flex flex-col items-center bg-gray-300 size-12 m-3">
+			<div
+				class="flex flex-col flex-none items-center bg-gray-300 size-12 m-3"
+				use:tooltip={{ id: id }}
+			>
+				<Minidenticon username={val.name + "-" + id} class="size-12" />
 				<!-- <li {id}>user name: {val.name}<br />id: {id}</li> -->
-				<minidenticon-svg
-					class="inline-block size-12"
-					username={val.name + "-" + id}
-					use:tooltip={{ id: id, name: val.name }}
-				></minidenticon-svg>
 				<p>{val.name}</p>
 			</div>
 		{/each}
 	</section>
 </div>
+
+<style>
+	:global {
+		[data-tippy-root] {
+			--bg: #666;
+			background-color: var(--bg);
+			color: white;
+			border-radius: 0.2rem;
+			padding: 0.2rem 0.6rem;
+			filter: drop-shadow(1px 1px 3px rgb(0 0 0 / 0.1));
+
+			* {
+				transition: none;
+			}
+		}
+
+		[data-tippy-root]::before {
+			--size: 0.4rem;
+			content: "";
+			position: absolute;
+			left: calc(50% - var(--size));
+			top: calc(-2 * var(--size) + 1px);
+			border: var(--size) solid transparent;
+			border-bottom-color: var(--bg);
+		}
+	}
+</style>
