@@ -35,8 +35,20 @@
     let isHost = $derived(session.userID === session.hostID ? true : false);
     let mpCurrentTimeMin = $state(0),
         mpCurrentTimeSec = $state("00");
-    let mpDurationMin = $state(0),
-        mpDurationSec = $state("00");
+    let mpDurationMin = $derived.by(() => {
+        if(session.playlist[0]) {
+            return Math.trunc(parseInt(session.playlist[0].Duration) / 60);
+        } else {
+            return 0
+        }
+    })
+    let mpDurationSec = $derived.by(() => {
+        if(session.playlist[0]) {
+            return `${Math.trunc(parseInt(session.playlist[0].Duration) % 60)}`.padStart(2, "0");
+        } else {
+            return "00"
+        }
+    })
 
     $effect(() => {
         if (isHost) {
@@ -121,9 +133,9 @@
 
     function onloadedmetadata() {
         // labels
-        mpDurationMin = Math.trunc(session.playlist[0].Duration / 60);
+        mpDurationMin = Math.trunc(parseInt(session.playlist[0].Duration) / 60);
         mpDurationSec =
-            `${Math.trunc(session.playlist[0].Duration % 60)}`.padStart(2, "0");
+            `${Math.trunc(parseInt(session.playlist[0].Duration) % 60)}`.padStart(2, "0");
 
         // progress bar
         mpProgress.max = session.playlist[0].Duration;
