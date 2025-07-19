@@ -1,6 +1,6 @@
 <script>
 	import { session, API_PATH } from "@lib/index.svelte.js";
-	import RowMusicCard from "@components/RowMusicCard.svelte"
+	import RowMusicCard from "@components/RowMusicCard.svelte";
 
 	/**
 	 * @param {SubmitEvent} event
@@ -33,18 +33,30 @@
 	}
 </script>
 
-<div id="music_queue" class="flex flex-col border rounded-md border-emerald-400">
-	<form class="p-2" onsubmit={submitURL}>
-			<h2 class="text-2xl">Queue</h2>
-			<div class="flex">
-				<input class="flex-1 p-2 border border-blue-600" name="post_url" id="post_url" placeholder="submit an URL" />
-				<button class="flex-none p-2" type="submit">add</button>
-			</div>
+<div
+	id="music_queue"
+	class="flex flex-col overflow-auto border rounded-md border-emerald-400"
+>
+	<form class="music-queue-row p-2" onsubmit={submitURL}>
+		<h2 class="text-2xl">Queue</h2>
+		<div class="flex gap-1">
+			<input
+				class="flex-1 p-2 border border-blue-600"
+				name="post_url"
+				id="post_url"
+				placeholder="submit an URL"
+			/>
+			<button class="flex-none p-2" type="submit">add</button>
+		</div>
 	</form>
-	<ul id="room_queue_list">
+	<ul id="room_queue_list" class="music-queue-row">
 		{#each session.playlist as infoJson}
-			<li class="hidden" id={infoJson.ID}>{JSON.stringify(infoJson)}</li>
-			<RowMusicCard {infoJson}/>
+			{#if infoJson.ID != session.playlist[0].ID}
+				<li class="hidden" id={infoJson.ID}>
+					{JSON.stringify(infoJson)}
+				</li>
+				<RowMusicCard {infoJson} />
+			{/if}
 		{/each}
 	</ul>
 </div>

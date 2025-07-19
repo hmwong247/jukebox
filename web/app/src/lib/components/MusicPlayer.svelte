@@ -1,5 +1,5 @@
 <script>
-    import { onMount } from "svelte";
+    // import { onMount } from "svelte";
     import {
         session,
         mp,
@@ -11,6 +11,20 @@
     // bind
     let mpProgress;
     let mpVolume;
+    /** @typedef {import('@lib/index.svelte.js').InfoJson} InfoJson */
+    /** @type InfoJson */
+    let currentInfoJson = $derived.by(() => {
+        if (!session.playlist[0]) {
+            return {
+                ID: "n/a",
+                FullTitle: "n/a",
+                Uploader: "n/a",
+                Thumbnail: "n/a",
+                Duration: "n/a",
+            };
+        }
+        return session.playlist[0];
+    });
 
     // $inspect(mp).with((t, mp) => {
     //     if (t === "update") {
@@ -196,17 +210,26 @@
 </script>
 
 <div id="mp-wrapper">
-    <section class="mp_info">
-        <img src="" alt="Thumbnail" />
-        <h2>FullTitle</h2>
-        <h4>Uploader</h4>
+    <!-- infojson -->
+    <section class="flex p-2">
+        <img
+            class="w-auto h-16"
+            src={currentInfoJson.Thumbnail}
+            alt="Thumbnail"
+        />
+        <div class="flex flex-col px-2 align-middle">
+            <p class="text-xl">FullTitle: {currentInfoJson.FullTitle}</p>
+            <p class="text-sm py-1">Uploader: {currentInfoJson.Uploader}</p>
+        </div>
     </section>
-    <section class="mp_controls">
+    <!-- controls -->
+    <section class="flex items-center gap-2 p-2">
         <button onclick={togglePlayPause} disabled={!mp.running}
             >{mpPlayButton}</button
         >
-        <span>currentTime: {mpCurrentTimeMin}:{mpCurrentTimeSec}</span>
+        <span>{mpCurrentTimeMin}:{mpCurrentTimeSec}</span>
         <input
+            class="flex-1 w-[30%]"
             bind:this={mpProgress}
             id="mp_progress"
             type="range"
@@ -215,8 +238,9 @@
             disabled={!mp.running}
             oninput={mpseek}
         />
-        <span>duration: {mpDurationMin}:{mpDurationSec}</span>
+        <span>{mpDurationMin}:{mpDurationSec}</span>
         <input
+            class="flex-initial w-[20%]"
             bind:this={mpVolume}
             id="mp_volume"
             type="range"
@@ -230,7 +254,6 @@
     <audio
         bind:this={mp.elem}
         id="player"
-        controls
         preload="none"
         {onplay}
         {onpause}
