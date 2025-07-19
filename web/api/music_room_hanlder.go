@@ -132,8 +132,6 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 			if err := client.Hub.Player.Playlist.Enqueue(&node); err != nil {
 				slog.Error("[api] enqueue err", "err", err)
 				return
-			} else {
-				client.Hub.Player.Playlist.Traverse()
 			}
 
 			// responds ok to client
