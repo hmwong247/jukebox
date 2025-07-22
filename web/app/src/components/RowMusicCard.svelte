@@ -4,8 +4,6 @@
 
     let durationMin = Math.trunc(infoJson.Duration / 60);
     let durationSec = `${Math.trunc(infoJson.Duration % 60)}`.padStart(2, "0");
-
-    async function fetchThumbnail() {}
 </script>
 
 <div class="playlist-card">

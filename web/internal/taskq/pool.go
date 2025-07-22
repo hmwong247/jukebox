@@ -14,7 +14,26 @@ var (
 	PoolID = autoIncID{id: -1}
 )
 
+type TaskStatusEnum int
+
+const (
+	STATUS_CMD_UDPATE TaskStatusEnum = iota
+	STATUS_CMD_ADD
+	STATUS_CMD_REMOVE
+	STATUS_CMD_SWAP
+)
+
+var (
+	TaskStatusCMD = map[TaskStatusEnum]string{
+		STATUS_CMD_UDPATE: "update",
+		STATUS_CMD_ADD:    "add",
+		STATUS_CMD_REMOVE: "remove",
+		STATUS_CMD_SWAP:   "swap",
+	}
+)
+
 type TaskStatus struct {
+	Cmd    string
 	TaskID int64
 	Status string
 }

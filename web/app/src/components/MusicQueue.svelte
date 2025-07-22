@@ -1,6 +1,7 @@
 <script>
 	import { session, API_PATH } from "@scripts/index.svelte.js";
 	import RowMusicCard from "@components/RowMusicCard.svelte";
+	import RowMusicCardLoading from "./RowMusicCardLoading.svelte";
 
 	/**
 	 * @param {SubmitEvent} event
@@ -19,16 +20,28 @@
 				.then((res) => {
 					if (res.ok) {
 						console.log("Success:", res.status);
-						form.reset();
 					} else {
 						console.log("Error:", res.status);
+						throw new Error("Failed to submit request");
 					}
+					return res.text();
+				})
+				.then((taskID) => {
+					// update playlist for loading
+					const loading = {
+						TaskID: taskID,
+						Status: "loading",
+						URL: formData.get("post_url"),
+					};
+					session.queuelist.push(loading);
 				})
 				.catch((err) => {
 					throw err;
 				});
 		} catch (err) {
 			console.error("Fetch error:", err);
+		} finally {
+			form.reset();
 		}
 	}
 </script>
@@ -50,12 +63,19 @@
 		</div>
 	</form>
 	<ul id="room_queue_list" class="music-queue-row">
+		<!-- display succesful enqueue -->
 		{#each session.playlist as infoJson}
 			{#if infoJson.ID != session.playlist[0].ID}
 				<li class="hidden" id={infoJson.ID}>
 					{JSON.stringify(infoJson)}
 				</li>
 				<RowMusicCard {infoJson} />
+			{/if}
+		{/each}
+		{#each session.queuelist as task}
+			<!-- display loading -->
+			{#if task.Status != "ok"}
+				<RowMusicCardLoading {task} />
 			{/if}
 		{/each}
 	</ul>

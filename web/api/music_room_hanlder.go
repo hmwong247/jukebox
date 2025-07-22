@@ -100,6 +100,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			slog.Debug("[api] json response ctx timeout")
 			taskStatusJson := taskq.TaskStatus{
+				Cmd:    taskq.TaskStatusCMD[taskq.STATUS_CMD_UDPATE],
 				TaskID: taskID,
 				Status: "timeout",
 			}
@@ -113,6 +114,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 		case err := <-req.ErrCh:
 			slog.Error("[api] info json err", "req", req, "err", err)
 			taskStatusJson := taskq.TaskStatus{
+				Cmd:    taskq.TaskStatusCMD[taskq.STATUS_CMD_UDPATE],
 				TaskID: taskID,
 				Status: "failed",
 			}
@@ -136,6 +138,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 
 			// responds ok to client
 			taskStatusJson := taskq.TaskStatus{
+				Cmd:    taskq.TaskStatusCMD[taskq.STATUS_CMD_UDPATE],
 				TaskID: taskID,
 				Status: "ok",
 			}

@@ -3,6 +3,8 @@ import SimplePeer from "simple-peer";
 
 /**
  * @typedef {{ID: string, FullTitle: string, Uploader: string, Thumbnail: string, Duration: string}} InfoJson
+ *
+ * @typedef {{TaskID: number, Status: string, URL: string}} InfoJsonTaskStatus
  */
 
 // global state
@@ -14,6 +16,8 @@ const session = $state({
 	userList: {},
 	/** @type {Array.<InfoJson>} */
 	playlist: [],
+	/** @type {Array.<InfoJsonTaskStatus>} */
+	queuelist: [],
 	userID: null,
 	hostID: null,
 });
@@ -321,6 +325,19 @@ function updateRoomStatus(msg) {
 function updatePlaylist(msg) {
 	const cmd = msg.Data.Cmd
 	switch (cmd) {
+		case "update":
+			session.queuelist.forEach((entry, index) => {
+				if (entry.TaskID == msg.Data.TaskID) {
+					if (msg.Data.Status == "ok") {
+						session.queuelist.splice(index, 1)
+						return
+					} else {
+						entry.Status = msg.Data.Status
+						return
+					}
+				}
+			})
+			break
 		case "add":
 			delete msg.Data['Cmd']
 			session.playlist.push(msg.Data)
