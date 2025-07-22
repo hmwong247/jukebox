@@ -24,8 +24,8 @@
      */
     "checkJs": true,
     "paths": {
-      "@components/*": ["./src/lib/components/*"],
-      "@lib/*": ["./src/scripts/*"],
+      "@scripts/*": ["./src/scripts/*"],
+      "@components/*": ["./src/components/*"],
     }
   },
   /**

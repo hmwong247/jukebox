@@ -1,5 +1,5 @@
 <script>
-    /** @typedef {import('../../scripts/index.svelte.js').InfoJson} InfoJson */
+    /** @typedef {import('@scripts/index.svelte.js').InfoJson} InfoJson */
     let { infoJson } = $props();
 
     let durationMin = Math.trunc(infoJson.Duration / 60);

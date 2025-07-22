@@ -1,5 +1,5 @@
 <script>
-	import { session, API_PATH } from "../../scripts/index.svelte.js";
+	import { session, API_PATH } from "@scripts/index.svelte.js";
 	import Minidenticon from "./Minidenticon.svelte";
 
 	import tippy from "tippy.js";

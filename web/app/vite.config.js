@@ -33,8 +33,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "simple-peer": "simple-peer/simplepeer.min.js",
-      "@lib": path.resolve(__dirname, "src/scripts"),
-      "@components": path.resolve(__dirname, "src/lib/components"),
+      "@scripts": path.resolve(__dirname, "src/scripts"),
+      "@components": path.resolve(__dirname, "src/components"),
     },
   },
 })

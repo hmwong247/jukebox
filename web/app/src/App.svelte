@@ -6,7 +6,7 @@
 	import MusicQueue from "@components/MusicQueue.svelte";
 
 	// internal library
-	import { session } from "@lib/index.svelte.js";
+	import { session } from "@scripts/index.svelte.js";
 
 	// debug
 	// $inspect(`app: `, session)

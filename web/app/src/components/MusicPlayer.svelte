@@ -6,12 +6,12 @@
         rtc,
         API_PATH,
         PEER_CMD,
-    } from "../../scripts/index.svelte.js";
+    } from "@scripts/index.svelte.js";
 
     // bind
     let mpProgress;
     let mpVolume;
-    /** @typedef {import('@lib/index.svelte.js').InfoJson} InfoJson */
+    /** @typedef {import('@scripts/index.svelte.js').InfoJson} InfoJson */
     /** @type InfoJson */
     let currentInfoJson = $derived.by(() => {
         if (!session.playlist[0]) {

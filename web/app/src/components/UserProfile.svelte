@@ -1,5 +1,5 @@
 <script>
-	import { api, session } from "../../scripts/index.svelte.js";
+	import { api, session } from "@scripts/index.svelte.js";
 
 	function onsubmit(event) {
 		if (window.location.href.includes("join?rid=")) {
@@ -8,7 +8,6 @@
 			api.requestNewRoom(event, this);
 		}
 	}
-
 </script>
 
 <form name="user_profile" {onsubmit}>
