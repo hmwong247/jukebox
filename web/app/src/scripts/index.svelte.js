@@ -409,7 +409,7 @@ async function loadAudioAsHost() {
 	}
 
 	// implement a retry mechanism
-	mp.elem.src = API_PATH.STREAM + "?sid=" + session.sessionID
+	mp.elem.src = API_PATH.STREAM + "?sid=" + session.sessionID + "&i=" + session.playlist[0].ID
 }
 
 async function loadAudioAsPeer(stream) {

@@ -19,7 +19,7 @@
                 ID: "n/a",
                 FullTitle: "n/a",
                 Uploader: "n/a",
-                Thumbnail: "n/a",
+                Thumbnail: "",
                 Duration: "n/a",
             };
         }
@@ -36,19 +36,22 @@
     let mpCurrentTimeMin = $state(0),
         mpCurrentTimeSec = $state("00");
     let mpDurationMin = $derived.by(() => {
-        if(session.playlist[0]) {
+        if (session.playlist[0]) {
             return Math.trunc(parseInt(session.playlist[0].Duration) / 60);
         } else {
-            return 0
+            return 0;
         }
-    })
+    });
     let mpDurationSec = $derived.by(() => {
-        if(session.playlist[0]) {
-            return `${Math.trunc(parseInt(session.playlist[0].Duration) % 60)}`.padStart(2, "0");
+        if (session.playlist[0]) {
+            return `${Math.trunc(parseInt(session.playlist[0].Duration) % 60)}`.padStart(
+                2,
+                "0",
+            );
         } else {
-            return "00"
+            return "00";
         }
-    })
+    });
 
     $effect(() => {
         if (isHost) {
@@ -135,7 +138,10 @@
         // labels
         mpDurationMin = Math.trunc(parseInt(session.playlist[0].Duration) / 60);
         mpDurationSec =
-            `${Math.trunc(parseInt(session.playlist[0].Duration) % 60)}`.padStart(2, "0");
+            `${Math.trunc(parseInt(session.playlist[0].Duration) % 60)}`.padStart(
+                2,
+                "0",
+            );
 
         // progress bar
         mpProgress.max = session.playlist[0].Duration;

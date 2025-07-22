@@ -39,7 +39,7 @@
 >
 	<form class="music-queue-row p-2" onsubmit={submitURL}>
 		<h2 class="text-2xl">Queue</h2>
-		<div class="flex gap-1">
+		<div class="flex gap-1 mt-1">
 			<input
 				class="flex-1 p-2 border border-blue-600"
 				name="post_url"

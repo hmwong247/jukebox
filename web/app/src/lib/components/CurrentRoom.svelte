@@ -49,11 +49,12 @@
 
 	/* effect */
 
+	/** @param data {{name: string}} */
 	function tooltip(elem, data) {
 		$effect(() => {
 			const tooltip = tippy(elem, {
 				interactive: true,
-				content: data.id,
+				content: data.name,
 			});
 
 			// return tooltip.destroy;
@@ -61,41 +62,34 @@
 	}
 </script>
 
-<div>
-	<article>
-		<p style="display:inline">user name:</p>
-		<div style="display:inline" id="username">{session.username}</div>
-		<br />
-		<p style="display:inline">roomd id:</p>
-		<div style="display:inline" id="room_id">
+<section>
+	<div class="flex items-center">
+		<p class="mr-2">Invite Link:</p>
+		<p id="room_id">
 			{document.location.origin +
 				API_PATH.JOIN +
 				"?rid=" +
 				session.roomID}
-		</div>
-		<button style="display:inline" onclick={copyLink}>Copy</button>
-		<br />
-		<p style="display:inline">host:</p>
-		<div style="display:inline" id="room_host">{hostname}</div>
-		<br />
-		<p style="display:inline">capacity:</p>
-		<div style="display:inline" id="room_capacity">{capacity}</div>
-		<br />
-	</article>
+		</p>
+		<button onclick={copyLink}>Copy</button>
+	</div>
+	<p>capacity: {capacity}</p>
+	<br />
+</section>
 
-	<section id="room_user_list" class="current-user-list flex overflow-auto">
-		{#each Object.entries(session.userList) as [id, val]}
-			<div
-				class="flex flex-col flex-none items-center bg-gray-300 size-12 m-3"
-				use:tooltip={{ id: id }}
-			>
-				<Minidenticon username={val.name + "-" + id} class="size-12" />
-				<!-- <li {id}>user name: {val.name}<br />id: {id}</li> -->
-				<p>{val.name}</p>
-			</div>
-		{/each}
-	</section>
-</div>
+<section id="room_user_list" class="current-user-list flex overflow-auto">
+	{#each Object.entries(session.userList) as [id, val]}
+		<div
+			class="flex flex-col flex-none items-center bg-gray-300 size-12 m-3"
+			use:tooltip={{ name: val.name }}
+		>
+			<Minidenticon username={val.name + "-" + id} class="size-12" />
+			{#if session.userList[id].host == true}
+				<p>(host)</p>
+			{/if}
+		</div>
+	{/each}
+</section>
 
 <style>
 	:global {
@@ -112,14 +106,14 @@
 			}
 		}
 
-		[data-tippy-root]::before {
-			--size: 0.4rem;
-			content: "";
-			position: absolute;
-			left: calc(50% - var(--size));
-			top: calc(-2 * var(--size) + 1px);
-			border: var(--size) solid transparent;
-			border-bottom-color: var(--bg);
-		}
+		/* [data-tippy-root]::before { */
+		/* 	--size: 0.4rem; */
+		/* 	content: ""; */
+		/* 	position: absolute; */
+		/* 	left: calc(50% - var(--size)); */
+		/* 	top: calc(-2 * var(--size) + 1px); */
+		/* 	border: var(--size) solid transparent; */
+		/* 	border-bottom-color: var(--bg); */
+		/* } */
 	}
 </style>
