@@ -32,6 +32,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // "flowbite-svelte": "flowbite-svelte/dist/index.js",
       "simple-peer": "simple-peer/simplepeer.min.js",
       "@scripts": path.resolve(__dirname, "src/scripts"),
       "@components": path.resolve(__dirname, "src/components"),

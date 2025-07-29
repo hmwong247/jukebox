@@ -1,5 +1,7 @@
 <script>
 	import { session } from "@scripts/index.svelte";
+	import { Spinner } from "flowbite-svelte";
+
 	/** @typedef {import('@scripts/index.svelte.js').InfoJsonTaskStatus} InfoJsonTaskStatus*/
 
 	let { task } = $props();
@@ -15,9 +17,9 @@
 </script>
 
 <div class="playlist-card">
-	<div class="flex self-end">
+	<div class="flex items-center">
 		{#if task.Status == "loading"}
-			<div class="p-2">spin</div>
+			<Spinner color="red" />
 		{/if}
 		{#if task.Status != "loading" && task.Status != "ok"}
 			<button class="p-2" {onclick}>del</button>
