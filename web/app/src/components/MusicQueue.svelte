@@ -1,5 +1,5 @@
 <script>
-	import { session, API_PATH } from "@scripts/index.svelte.js";
+	import { session, API_PATH, TASK_STATUS_STR } from "@scripts/index.svelte.js";
 	import RowMusicCard from "@components/RowMusicCard.svelte";
 	import RowMusicCardLoading from "./RowMusicCardLoading.svelte";
 
@@ -30,7 +30,7 @@
 					// update playlist for loading
 					const loading = {
 						TaskID: taskID,
-						Status: "loading",
+						Status: TASK_STATUS_STR.LOADING,
 						URL: formData.get("post_url"),
 					};
 					session.queuelist.push(loading);
@@ -74,7 +74,7 @@
 		{/each}
 		{#each session.queuelist as task}
 			<!-- display loading -->
-			{#if task.Status != "ok"}
+			{#if task.Status != TASK_STATUS_STR.OK }
 				<RowMusicCardLoading {task} />
 			{/if}
 		{/each}

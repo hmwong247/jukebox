@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"main/internal/room"
 	"main/internal/taskq"
@@ -39,7 +40,7 @@ func getClient(sid uuid.UUID) *room.Client {
 	return client
 }
 
-// route: "POST /api/enqueue"
+// route: "POST /api/enqueue?sid="
 func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 	sid, err := decodeQueryID(r, "sid")
 	if err != nil {
@@ -100,9 +101,9 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			slog.Debug("[api] json response ctx timeout")
 			taskStatusJson := taskq.TaskStatus{
-				Cmd:    taskq.TaskStatusCMD[taskq.STATUS_CMD_UDPATE],
+				Cmd:    taskq.STATUS_CMD_UPDATE,
 				TaskID: taskID,
-				Status: "timeout",
+				Status: taskq.STATUS_STR_TIMEOUT,
 			}
 			msg := room.DirectMessage[taskq.TaskStatus]{
 				MsgType: room.MSG_EVENT_PLAYLIST,
@@ -114,9 +115,9 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 		case err := <-req.ErrCh:
 			slog.Error("[api] info json err", "req", req, "err", err)
 			taskStatusJson := taskq.TaskStatus{
-				Cmd:    taskq.TaskStatusCMD[taskq.STATUS_CMD_UDPATE],
+				Cmd:    taskq.STATUS_CMD_UPDATE,
 				TaskID: taskID,
-				Status: "failed",
+				Status: taskq.STATUS_STR_FAILED,
 			}
 			msg := room.DirectMessage[taskq.TaskStatus]{
 				MsgType: room.MSG_EVENT_PLAYLIST,
@@ -138,9 +139,9 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 
 			// responds ok to client
 			taskStatusJson := taskq.TaskStatus{
-				Cmd:    taskq.TaskStatusCMD[taskq.STATUS_CMD_UDPATE],
+				Cmd:    taskq.STATUS_CMD_UPDATE,
 				TaskID: taskID,
-				Status: "ok",
+				Status: taskq.STATUS_STR_OK,
 			}
 			dmsg := room.DirectMessage[taskq.TaskStatus]{
 				MsgType: room.MSG_EVENT_PLAYLIST,
@@ -152,7 +153,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 			// broadcast json to websocket
 			wsInfoJson := room.WSInfoJson{
 				ID:       node.ID,
-				Cmd:      "add",
+				Cmd:      room.INFOJSON_CMD_ADD,
 				InfoJson: req.Response,
 			}
 			msg := room.BroadcastMessage[room.WSInfoJson]{
@@ -238,4 +239,52 @@ func StreamEnd(w http.ResponseWriter, r *http.Request) {
 	}
 	client.Hub.Player.NodeWGCnt.Add(1)
 	client.SignalMPNext()
+}
+
+type QueueAction struct {
+	Cmd    string
+	NodeID int
+}
+
+// route: "POST /api/queue?sid="
+func EditQueue(w http.ResponseWriter, r *http.Request) {
+	sid, err := decodeQueryID(r, "sid")
+	if err != nil {
+		http.Error(w, "", http.StatusBadRequest)
+		return
+	}
+	client := getClient(sid)
+	if client == nil {
+		http.Error(w, "", http.StatusBadRequest)
+		return
+	}
+
+	var queueAction QueueAction
+	err = json.NewDecoder(r.Body).Decode(&queueAction)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// slog.Debug("[api] /api/queue", "queueAction", queueAction)
+
+	err = client.Hub.Player.Playlist.Remove(queueAction.NodeID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// websocket: json response
+	wsInfoJson := room.WSInfoJson{
+		ID:  queueAction.NodeID,
+		Cmd: room.INFOJSON_CMD_REMOVE,
+	}
+	msg := room.BroadcastMessage[room.WSInfoJson]{
+		MsgType:  room.MSG_EVENT_PLAYLIST,
+		UID:      client.ID.String(),
+		Username: client.Name,
+		Data:     wsInfoJson,
+	}
+	client.Hub.BroadcastMsg(&msg)
+
 }

@@ -32,13 +32,13 @@ const (
 	MSG_RESERVED
 )
 
-// fallback message struct
-type Message struct {
-	MsgType  MsgType
-	UID      string      `json:",omitempty"`
-	Username string      `json:",omitempty"`
-	Data     interface{} `json:"Data"`
-}
+type WSCMD string
+
+const (
+	INFOJSON_CMD_ADD    WSCMD = "ADD"
+	INFOJSON_CMD_REMOVE WSCMD = "REMOVE"
+	INFOJSON_CMD_SWAP   WSCMD = "SWAP"
+)
 
 type Event string
 type BMData interface {
@@ -47,9 +47,14 @@ type BMData interface {
 
 type WSInfoJson struct {
 	ID             int
-	Cmd            string
+	Cmd            WSCMD
 	MovedTo        int `json:",omitempty"`
 	ytdlp.InfoJson `json:",omitempty"`
+}
+
+type WSQueueAction struct {
+	Cmd    string
+	NodeID int
 }
 
 type BroadcastMessage[T BMData] struct {

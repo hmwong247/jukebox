@@ -1,5 +1,5 @@
 <script>
-	import { session } from "@scripts/index.svelte";
+	import { session, TASK_STATUS_STR } from "@scripts/index.svelte";
 	import { Spinner } from "flowbite-svelte";
 
 	/** @typedef {import('@scripts/index.svelte.js').InfoJsonTaskStatus} InfoJsonTaskStatus*/
@@ -18,10 +18,10 @@
 
 <div class="playlist-card">
 	<div class="flex items-center">
-		{#if task.Status == "loading"}
+		{#if task.Status == TASK_STATUS_STR.LOADING}
 			<Spinner color="red" />
 		{/if}
-		{#if task.Status != "loading" && task.Status != "ok"}
+		{#if task.Status != TASK_STATUS_STR.LOADING && task.Status != TASK_STATUS_STR.OK}
 			<button class="p-2" {onclick}>del</button>
 		{/if}
 	</div>

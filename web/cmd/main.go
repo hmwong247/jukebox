@@ -45,6 +45,7 @@ func main() {
 	mux.HandleFunc("GET /api/users", api.UserList)
 	mux.HandleFunc("GET /api/playlist", api.Playlist)
 	mux.HandleFunc("POST /api/enqueue", api.EnqueueURL)
+	mux.HandleFunc("POST /api/queue", api.EditQueue)
 	mux.HandleFunc("GET /api/stream", api.StreamAudio)
 	mux.HandleFunc("GET /api/streamend", api.StreamEnd)
 	mux.HandleFunc("GET /api/streampreload", api.StreamPreload)

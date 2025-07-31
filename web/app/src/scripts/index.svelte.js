@@ -31,6 +31,7 @@ const API_PATH = Object.freeze({
 	USERS: "/api/users",
 	PLAYLIST: "/api/playlist",
 	ENQUEUE: "/api/enqueue",
+	QUEUE: "/api/queue",
 	STREAM: "/api/stream",
 	STREAM_END: "/api/streamend",
 	STREAM_PRELOAD: "/api/streampreload",
@@ -49,6 +50,19 @@ const MSG_TYPE = Object.freeze({
 	EVENT_PLAYER: 4,
 })
 
+const PLAYLIST_CMD = Object.freeze({
+	UPDATE: "UPDATE",
+	ADD: "ADD",
+	REMOVE: "REMOVE",
+	SWAP: "SWAP",
+})
+
+const TASK_STATUS_STR = Object.freeze({
+	LOADING: "LOADING",
+	OK: "OK",
+	FAILED: "FAILED",
+	TIMEOUT: "TIMEOUT",
+})
 
 /*==============================================================================
 	init
@@ -325,10 +339,10 @@ function updateRoomStatus(msg) {
 function updatePlaylist(msg) {
 	const cmd = msg.Data.Cmd
 	switch (cmd) {
-		case "update":
+		case PLAYLIST_CMD.UPDATE:
 			session.queuelist.forEach((entry, index) => {
 				if (entry.TaskID == msg.Data.TaskID) {
-					if (msg.Data.Status == "ok") {
+					if (msg.Data.Status == PLAYLIST_CMD.UPDATE) {
 						session.queuelist.splice(index, 1)
 						return
 					} else {
@@ -338,13 +352,19 @@ function updatePlaylist(msg) {
 				}
 			})
 			break
-		case "add":
+		case PLAYLIST_CMD.ADD:
 			delete msg.Data['Cmd']
 			session.playlist.push(msg.Data)
 			break
-		case "remove":
+		case PLAYLIST_CMD.REMOVE:
+			session.playlist.forEach((entry, index) => {
+				if(entry.ID == msg.Data.ID) {
+					session.playlist.splice(index, 1)
+					return
+				}
+			})
 			break
-		case "swap":
+		case PLAYLIST_CMD.SWAP:
 			break
 		default:
 			break
@@ -679,7 +699,7 @@ function rtcRestart() {
 */
 
 // const
-export { API_PATH, PEER_CMD }
+export { API_PATH, PEER_CMD, PLAYLIST_CMD as TASK_STATUS_CMD, TASK_STATUS_STR }
 
 // global state
 export { session, ws, mp }
