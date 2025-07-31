@@ -41,6 +41,9 @@ def dl_infojson(url: str) -> dict:
         ]
         json = {}
         for key in info_keys:
+            if key == 'duration':
+                json[key] = int(entry.get(key))
+                continue
             json[key] = entry.get(key)
 
         return json
