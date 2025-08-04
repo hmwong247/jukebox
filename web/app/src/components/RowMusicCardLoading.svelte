@@ -26,7 +26,11 @@
 		{/if}
 	</div>
 	<div class="flex flex-col mx-2">
-		<h2>{task.URL}</h2>
+		{#if task.Status != TASK_STATUS_STR.LOADING && task.Status != TASK_STATUS_STR.OK}
+        	<p class="text-xl p-1 truncate max-w-[24rem] text-red-500">{task.URL}</p>
+		{:else}
+        	<p class="text-xl p-1 truncate max-w-[24rem]">{task.URL}</p>
+		{/if}
 		<div class="flex gap-2">
 			<div>taskID: {task.TaskID}</div>
 			<div>taskStatus: {task.Status}</div>

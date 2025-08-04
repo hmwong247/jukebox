@@ -35,11 +35,11 @@
     <p class="place-content-center">{infoJson.ID}</p>
     <img class="m-2 w-auto h-16" src={infoJson.Thumbnail} alt="thumbnail" />
     <div class="flex-1 flex-col min-w-[10%]">
-        <p class="text-xl p-1 overflow-hidden truncate text-ellipsis">
+        <p class="text-xl p-1 truncate">
             {infoJson.FullTitle}
         </p>
         <p
-            class="text-md text-light p-1 overflow-hidden truncate text-ellipsis"
+            class="text-md text-light p-1 truncate"
         >
             {infoJson.Uploader}
         </p>
