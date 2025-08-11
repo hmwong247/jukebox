@@ -99,6 +99,10 @@ func (mp *MusicPlayer) Run(ctx context.Context, h *Hub) {
 			mp.AudioReader = nil
 			if mp.Playlist.Size() > 0 {
 				// the node could be preloading
+				// download the audio if not present at the moment
+				if len(mp.Playlist.Head().AudioByte) == 0 {
+					mp.download(ctx, mp.Playlist.Head())
+				}
 				mp.next()
 			}
 			mp.NodeWGCnt.Done()
