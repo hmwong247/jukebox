@@ -1,10 +1,11 @@
 package api
 
 import (
-	"log/slog"
 	"main/internal/room"
 	"net/http"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 // route: /ws?sid=
@@ -18,7 +19,9 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	sid, err := decodeQueryID(r, "sid")
 	if err != nil {
-		slog.Info("ws: Trying to enter hub with invalid session UUID")
+		log.Debug().
+			Err(err).
+			Msg("[ws] Failed to connect websocket")
 		http.Error(w, "", http.StatusBadRequest)
 		return
 	}
@@ -26,7 +29,10 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// check if client has a connection already
 	if uid, ok := room.TokenMap[sid]; ok {
 		if c, ok := room.ClientMap[*uid]; ok {
-			slog.Info("ws: client has already connected", "uid", c.ID.String())
+			log.Debug().
+				Str("uid", c.ID.String()).
+				Str("rid", c.Hub.ID.String()).
+				Msg("[ws] Client has already connected")
 			http.Error(w, "", http.StatusForbidden)
 			return
 		}
@@ -34,13 +40,17 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	profile, ok := entryProfiles[sid]
 	if !ok {
-		slog.Error("ws: session does not exists", "status", http.StatusForbidden)
+		log.Debug().
+			Str("sid", sid.String()).
+			Msg("[ws] session does not exists")
 		http.Error(w, "", http.StatusForbidden)
 		return
 	}
 	hub, ok := room.HubMap[profile.rid]
 	if !ok {
-		slog.Error("ws: hub does not exists", "status", http.StatusInternalServerError)
+		log.Error().
+			Any("profile", profile).
+			Msg("[ws] hub does not exists")
 		http.Error(w, "", http.StatusInternalServerError)
 		return
 	}
@@ -48,7 +58,12 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// switch to websocket
 	conn, err := room.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		slog.Error("ws upgrade err", "err", err)
+		log.Error().
+			Str("sid", sid.String()).
+			Str("rid", profile.rid.String()).
+			Str("uid", profile.uid.String()).
+			Err(err).
+			Msg("[ws] websocket upgrade error")
 		return
 	}
 

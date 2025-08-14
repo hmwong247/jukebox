@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"main/internal/taskq"
 	"main/internal/ytdlp"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 // All message sent via the websocket hub MUST implement this interface
@@ -67,9 +67,8 @@ type BroadcastMessage[T BMData] struct {
 func (bm *BroadcastMessage[T]) Json() ([]byte, error) {
 	msgJson, err := json.Marshal(bm)
 	if err != nil {
-		errStr := fmt.Sprintf("json error, %v", err)
-		newErr := errors.New(errStr)
-		return nil, newErr
+		errf := fmt.Errorf("json error, %v", err)
+		return nil, errf
 	}
 
 	return msgJson, nil
@@ -79,7 +78,7 @@ func (bm *BroadcastMessage[T]) Sender() *Client {
 	if bm.UID != uuid.Nil.String() {
 		uid, err := uuid.Parse(bm.UID)
 		if err != nil {
-			slog.Error("Invalid uuid from peer message", "uuid", bm.UID)
+			log.Debug().Str("uuid", bm.UID).Msg("Invalid uuid from peer message")
 			return nil
 		}
 		if c, ok := ClientMap[uid]; ok {
@@ -120,9 +119,8 @@ func (dm *DirectMessage[T]) Json() ([]byte, error) {
 	}
 	msgJson, err := json.Marshal(dm)
 	if err != nil {
-		errStr := fmt.Sprintf("json error, %v", err)
-		newErr := errors.New(errStr)
-		return nil, newErr
+		errf := fmt.Errorf("json error, %v", err)
+		return nil, errf
 	}
 
 	return msgJson, nil
@@ -173,9 +171,8 @@ type PeerMessage[T PMData] struct {
 func (pm *PeerMessage[T]) Json() ([]byte, error) {
 	msgJson, err := json.Marshal(pm)
 	if err != nil {
-		errStr := fmt.Sprintf("json error, %v", err)
-		newErr := errors.New(errStr)
-		return nil, newErr
+		errf := fmt.Errorf("json error, %v", err)
+		return nil, errf
 	}
 
 	return msgJson, nil
@@ -185,7 +182,7 @@ func (pm *PeerMessage[T]) Sender() *Client {
 	if pm.UID != uuid.Nil.String() {
 		uid, err := uuid.Parse(pm.UID)
 		if err != nil {
-			slog.Error("Invalid sender uuid from peer message", "uuid", pm.UID)
+			log.Debug().Str("uuid", pm.UID).Msg("Invalid sender uuid from peer message")
 			return nil
 		}
 		if c, ok := ClientMap[uid]; ok {
@@ -217,9 +214,8 @@ type PeerDirectMessage[T PMData] struct {
 func (pm *PeerDirectMessage[T]) Json() ([]byte, error) {
 	msgJson, err := json.Marshal(pm)
 	if err != nil {
-		errStr := fmt.Sprintf("json error, %v", err)
-		newErr := errors.New(errStr)
-		return nil, newErr
+		errf := fmt.Errorf("json error, %v", err)
+		return nil, errf
 	}
 
 	return msgJson, nil
@@ -229,7 +225,7 @@ func (pm *PeerDirectMessage[T]) Sender() *Client {
 	if pm.UID != uuid.Nil.String() {
 		uid, err := uuid.Parse(pm.UID)
 		if err != nil {
-			slog.Error("Invalid sender uuid from peer direct message", "uuid", pm.UID)
+			log.Info().Str("uuid", pm.UID).Msg("Invalid sender uuid from peer direct message")
 			return nil
 		}
 		if c, ok := ClientMap[uid]; ok {
@@ -243,7 +239,7 @@ func (pm *PeerDirectMessage[T]) Reciever() *Client {
 	if pm.To != uuid.Nil.String() {
 		uid, err := uuid.Parse(pm.To)
 		if err != nil {
-			slog.Error("Invalid reciever uuid from peer direct message", "uuid", pm.To)
+			log.Info().Str("uuid", pm.To).Msg("Invalid reciever uuid from peer direct message")
 			return nil
 		}
 		if c, ok := ClientMap[uid]; ok {

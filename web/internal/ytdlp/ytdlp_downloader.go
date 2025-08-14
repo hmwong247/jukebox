@@ -5,17 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/url"
 	"os"
+
+	"github.com/rs/zerolog/log"
 )
 
 var (
 	YTDLPY_SOCKET_PATH = func() string {
 		path := os.Getenv("YTDLPY_SOCKET_PATH")
 		if path == "" {
-			slog.Error("YTDLPY_SOCKET_PATH not found")
+			log.Error().Msg("YTDLPY_SOCKET_PATH not found")
 			return ""
 
 		}
@@ -92,7 +93,7 @@ func DownloadInfoJson(ctx context.Context, rawURL string) (InfoJson, error) {
 		errf := fmt.Errorf("[UDS] read error, err:%v", err)
 		return InfoJson{}, errf
 	}
-	slog.Debug("[UDS] recv: ", "jsonBytes", jsonBytes)
+	log.Debug().Bytes("jsonBytes", jsonBytes).Msg("[UDS] recv: ")
 
 	infoJson := InfoJson{}
 	if err := json.Unmarshal(jsonBytes, &infoJson); err != nil {
@@ -101,7 +102,7 @@ func DownloadInfoJson(ctx context.Context, rawURL string) (InfoJson, error) {
 	}
 	// slog.Debug("infoJson", "json", infoJson)
 	if infoJson.Err != "" {
-		slog.Debug("infoJson.Err", "err", infoJson.Err)
+		log.Debug().Str("error", infoJson.Err).Msg("Failed to parse infoJson")
 		errf := fmt.Errorf("ytdlpy error: %v", infoJson.Err)
 		return InfoJson{}, errf
 	}

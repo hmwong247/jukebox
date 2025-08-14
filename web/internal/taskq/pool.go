@@ -3,11 +3,11 @@ package taskq
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"sync"
 
 	"github.com/bwmarrin/snowflake"
+	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -83,9 +83,9 @@ func NewWorkerPool(workernum int, qbuffer int) (*WorkerPool, error) {
 
 func (wp *WorkerPool) Run(ctx context.Context) {
 	if name, ok := ctx.Value("name").(string); ok {
-		slog.Debug("worker pool running", "name", name, "id", wp.ID)
+		log.Info().Str("name", name).Int("id", wp.ID).Msg("Worker pool running")
 	} else {
-		slog.Debug("worker pool ctx err", "name", name, "id", wp.ID)
+		log.Error().Str("name", name).Int("id", wp.ID).Msg("Worker pool ctx error")
 		return
 	}
 	// create workers
@@ -93,13 +93,13 @@ func (wp *WorkerPool) Run(ctx context.Context) {
 		w := newWorker(i, wp.workerq)
 		wp.workers = append(wp.workers, w)
 		go w.Start(ctx)
-		slog.Debug("created worker", "id", i)
+		log.Debug().Int("id", i).Msg("created worker")
 	}
 	for {
 		select {
 		case <-ctx.Done():
 			if name, ok := ctx.Value("name").(string); ok {
-				slog.Info("worker pool ctx cancelled", "ctx", ctx.Err(), "name", name)
+				log.Info().Err(ctx.Err()).Str("name", name).Msg("worker pool ctx cancelled")
 			}
 			return
 		case task := <-wp.taskq:
@@ -114,7 +114,7 @@ func (wp *WorkerPool) Run(ctx context.Context) {
 func (wp *WorkerPool) Submit(ctx context.Context, t Task) (int, int64) {
 	select {
 	case <-ctx.Done():
-		slog.Info("submit cancelled", "ctx", ctx.Err())
+		log.Info().Err(ctx.Err()).Msg("submit cancelled")
 		return http.StatusRequestTimeout, -1
 	case wp.taskq <- t:
 		// signal to the caller

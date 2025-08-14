@@ -95,8 +95,7 @@ func (playlist *Playlist) Move(id, other int) error {
 		}
 	}
 	if n1 == nil {
-		errStr := fmt.Sprintf("node not found, id: %v", id)
-		return errors.New(errStr)
+		return fmt.Errorf("node not found, id: %v", id)
 	}
 	var n2 *linkedlist.Node[*MusicInfo] = nil
 	for n2 = playlist.list.Head(); n2 != nil; n2 = n2.Next() {
@@ -105,8 +104,7 @@ func (playlist *Playlist) Move(id, other int) error {
 		}
 	}
 	if n2 == nil {
-		errStr := fmt.Sprintf("node not found, other: %v", other)
-		return errors.New(errStr)
+		return fmt.Errorf("node not found, other: %v", other)
 	}
 
 	// create a dummy node and swap them, then remove the dummy node

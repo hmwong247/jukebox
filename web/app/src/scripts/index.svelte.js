@@ -271,7 +271,7 @@ const ws = $state({
 })
 
 function connectWebSocket() {
-	const wsPath = "ws://" + document.location.host + API_PATH.WEBSOCKET + "?sid=" + session.sessionID
+	const wsPath = "wss://" + document.location.host + API_PATH.WEBSOCKET + "?sid=" + session.sessionID
 	return new Promise((resolve, reject) => {
 		ws.client = new WebSocket(wsPath)
 
@@ -358,7 +358,7 @@ function updatePlaylist(msg) {
 			break
 		case PLAYLIST_CMD.REMOVE:
 			session.playlist.forEach((entry, index) => {
-				if(entry.ID == msg.Data.ID) {
+				if (entry.ID == msg.Data.ID) {
 					session.playlist.splice(index, 1)
 					return
 				}

@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log/slog"
 	"main/internal/ytdlp"
 	"main/utils/weaksync"
 	"net/http"
 	"sync"
+
+	"github.com/rs/zerolog/log"
 )
 
 // debug
@@ -130,7 +131,7 @@ func (mp *MusicPlayer) lazyInit(mpctx context.Context) {
 		// init state
 		node := mp.Playlist.Head()
 		if node == nil {
-			slog.Error("[mp] playlist is empty")
+			log.Error().Msg("[mp] playlist is empty")
 			return
 		}
 
@@ -147,7 +148,7 @@ func (mp *MusicPlayer) lazyInit(mpctx context.Context) {
 
 func (mp *MusicPlayer) download(mpctx context.Context, node *MusicInfo) {
 	if node == nil {
-		slog.Error("[mp] trying to download audio to a nil target")
+		log.Error().Msg("[mp] trying to download audio to a nil target")
 	} else {
 		ctx, cancel := context.WithTimeout(mpctx, ytdlp.TIMEOUT_AUDIO)
 		defer cancel()
@@ -161,17 +162,21 @@ func (mp *MusicPlayer) download(mpctx context.Context, node *MusicInfo) {
 
 		// mq response
 		if status != http.StatusAccepted {
-			slog.Info("[player] failed to enqueue request", "request", req)
+			log.Debug().
+				Str("reqURL", req.URL).
+				Msg("[mp] failed to enqueue request")
 			return
 		}
 
 		// audio byte response
 		select {
 		case <-ctx.Done():
-			slog.Info("[player] request audio timeout")
+			log.Debug().
+				Str("reqURL", req.URL).
+				Msg("[mp] Request audio timeout")
 			return
 		case err := <-req.ErrCh:
-			slog.Info("[player] audio byte reponse err", "req", req, "err", err)
+			log.Error().Err(err).Str("reqURL", req.URL).Msg("[mp] Audio byte reponse error")
 			return
 		case <-req.FinCh:
 		}
@@ -197,7 +202,7 @@ func (mp *MusicPlayer) next() {
 
 	nextNode, err := mp.Playlist.Dequeue()
 	if err != nil {
-		slog.Error("[mp] dequeue error in next()", "err", err)
+		log.Error().Err(err).Msg("[mp] Dequeue error in next()")
 		return
 	}
 	mp.CurNode = nextNode

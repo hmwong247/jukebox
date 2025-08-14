@@ -3,12 +3,12 @@ package room
 import (
 	"context"
 	"encoding/base64"
-	"log/slog"
 	"math"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -99,7 +99,7 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case <-h.Destroy:
-			slog.Info("[hub] recieved destroy")
+			log.Info().Msg("[hub] recieved destroy")
 			return
 
 		case client := <-h.Register:
@@ -111,11 +111,16 @@ func (h *Hub) Run() {
 		case msg := <-h.broadcast:
 			msgJson, err := msg.Json()
 			if err != nil {
-				slog.Error("[hub] boardcast json err", "err", err)
+				log.Error().Err(err).
+					Str("sender", msg.Sender().ID.String()).
+					Msg("[hub] Broadcast msg json encode error")
 				continue
 			}
 			if msg.DebugMode() {
-				slog.Debug("[hub] ws msg", "msg", msg)
+				log.Debug().
+					Str("sender", msg.Sender().ID.String()).
+					RawJSON("msg", msgJson).
+					Msg("[hub] ws broadcast msg")
 			}
 			for client := range h.Clients {
 				select {
@@ -129,11 +134,16 @@ func (h *Hub) Run() {
 		case msg := <-h.direct:
 			msgJson, err := msg.Json()
 			if err != nil {
-				slog.Error("[hub] direct json err", "err", err)
+				log.Error().Err(err).
+					Str("sender", msg.Sender().ID.String()).
+					Msg("[hub] Direct msg json encode error")
 				continue
 			}
 			if msg.DebugMode() {
-				slog.Debug("[hub] ws msg", "msg", msg)
+				log.Debug().
+					Str("sender", msg.Sender().ID.String()).
+					RawJSON("msg", msgJson).
+					Msg("[hub] ws direct msg")
 			}
 			if client := msg.Reciever(); client != nil {
 				select {
@@ -147,11 +157,16 @@ func (h *Hub) Run() {
 		case msg := <-h.peer:
 			msgJson, err := msg.Json()
 			if err != nil {
-				slog.Error("[hub] boardcast json err", "err", err)
+				log.Error().Err(err).
+					Str("sender", msg.Sender().ID.String()).
+					Msg("[hub] peer msg json encode error")
 				continue
 			}
 			if msg.DebugMode() {
-				slog.Debug("[hub] ws msg", "msg", msg)
+				log.Debug().
+					Str("sender", msg.Sender().ID.String()).
+					RawJSON("msg", msgJson).
+					Msg("[hub] ws peer msg")
 			}
 
 			reciever := msg.Reciever()
@@ -219,14 +234,15 @@ func (h *Hub) unregister(client *Client) {
 				select {
 				case <-h.Destroy:
 					// closed
-					slog.Debug("timeout destroy closed")
+					log.Debug().Msg("[hub] timeout destroy closed")
 					return
 				default:
 				}
 				h.Destroy <- struct{}{}
 			}()
-			base64rid := base64.RawURLEncoding.EncodeToString(h.ID[:])
-			slog.Info("ws hub closed: no client in hub", "id", base64rid)
+			log.Info().
+				Str("rid", h.B64ID()).
+				Msg("[hub] ws hub closed: no client in hub")
 
 			// unlock mutex
 			TokenMapMutex.Unlock()
@@ -261,7 +277,7 @@ func (h *Hub) Timeout(sid *uuid.UUID) {
 			select {
 			case <-h.Destroy:
 				// closed
-				slog.Debug("timeout destroy closed")
+				log.Debug().Msg("[hub] timeout destroy closed")
 				return
 			default:
 			}
@@ -294,7 +310,7 @@ func (h *Hub) BroadcastMsg(msg WSMessage) {
 	if len(h.Clients) > 0 {
 		select {
 		case <-h.Destroy:
-			slog.Debug("broadcast destroy closed")
+			log.Debug().Msg("[hub] broadcast destroy closed")
 			return
 		default:
 		}
@@ -309,7 +325,7 @@ func (h *Hub) DirectMsg(msg WSMessage) {
 	if len(h.Clients) > 0 {
 		select {
 		case <-h.Destroy:
-			slog.Debug("direct message destroy closed")
+			log.Debug().Msg("[hub] direct message destroy closed")
 			return
 		default:
 		}
@@ -322,7 +338,7 @@ func (h *Hub) SignalMsg(msg WSMessage) {
 	if len(h.Clients) > 0 {
 		select {
 		case <-h.Destroy:
-			slog.Debug("signal message destroy closed")
+			log.Debug().Msg("[hub] signal message destroy closed")
 			return
 		default:
 		}

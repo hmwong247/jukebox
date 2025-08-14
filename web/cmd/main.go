@@ -2,23 +2,28 @@ package main
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"main/api"
 	"main/internal/ytdlp"
 	"main/utils/gzipped"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 func main() {
-	// slog
-	logOpt := &slog.HandlerOptions{
-		Level: slog.LevelDebug,
+	// zerolog
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.DateTime})
+	logDebug := os.Getenv("LOG_LEVEL")
+	if logDebug == "debug" {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	} else {
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
-	slogger := slog.New(slog.NewTextHandler(os.Stdout, logOpt))
-	slog.SetDefault(slogger)
-	slog.Info("start")
+	log.Warn().Str("LOG_LEVEL", zerolog.GlobalLevel().String()).Msg("logger config: ")
 
 	// maybe cancellable?
 	dlpctx, dlpcancel := context.WithCancel(context.Background())
@@ -53,5 +58,7 @@ func main() {
 	// WebSocket
 	mux.HandleFunc("/ws", api.HandleWebSocket)
 
-	slog.Error("server crashed", "err", http.ListenAndServe(":8080", mux))
+	if err := http.ListenAndServe(":8080", mux); err != nil {
+		log.Fatal().Err(err).Msg("Server panic")
+	}
 }

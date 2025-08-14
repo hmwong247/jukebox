@@ -3,13 +3,14 @@ package api
 import (
 	"encoding/base64"
 	"encoding/json"
-	"log/slog"
+	"fmt"
 	"main/internal/room"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -47,10 +48,9 @@ func decodeQueryID(r *http.Request, key string) (uuid.UUID, error) {
 	decodedID, err := base64.RawURLEncoding.DecodeString(qID)
 	id, err := uuid.FromBytes(decodedID)
 	if err != nil {
-		slog.Info("invalid UUID", "qID", qID)
-		return id, err
+		errf := fmt.Errorf("Invalid UUID: %v, err: %v", qID, err)
+		return id, errf
 	}
-	// slog.Debug("decode uuid", "key", key, "qID", qID)
 
 	return id, nil
 }
@@ -77,7 +77,7 @@ func HandleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, ok := room.HubMap[rid]; !ok {
-		slog.Info("hub not found", "rid", rid.String())
+		log.Info().Str("rid", rid.String()).Msg("Hub not found")
 		http.Error(w, "", http.StatusForbidden)
 		return
 	}
@@ -108,7 +108,10 @@ func HandleNewSession(w http.ResponseWriter, r *http.Request) {
 	// never trust the client
 	uid, err := uuid.Parse(pUID)
 	if err != nil {
-		slog.Info("Invalid user UUID from client:", "status", http.StatusBadRequest, "err", err)
+		log.Debug().
+			Err(err).
+			Str("uid", pUID).
+			Msg("Invalid user UUID from client")
 		http.Error(w, "", http.StatusBadRequest)
 		return
 	}
@@ -121,7 +124,10 @@ func HandleNewSession(w http.ResponseWriter, r *http.Request) {
 		_rid, err := uuid.FromBytes(decodedRID)
 		rid = _rid
 		if err != nil {
-			slog.Info("Invalid room UUID from client:", "status", http.StatusBadRequest, "err", err)
+			log.Debug().
+				Err(err).
+				Str("rid", _rid.String()).
+				Msg("Invalid room UUID from client")
 			http.Error(w, "", http.StatusBadRequest)
 			return
 		}
@@ -129,15 +135,21 @@ func HandleNewSession(w http.ResponseWriter, r *http.Request) {
 
 	// valid data
 	// check user holds a sid already
-	if _, ok := entryToken[uid]; ok {
-		slog.Info("client has a token already", "endpoint", "POST /api/session", "uid", uid.String())
+	if sid, ok := entryToken[uid]; ok {
+		log.Debug().
+			Str("uid", uid.String()).
+			Str("sid", sid.String()).
+			Msg("Client has a session token already")
 		http.Error(w, "", http.StatusForbidden)
 		return
 	}
 
 	// check if client has a websocket connection already
 	if c, ok := room.ClientMap[uid]; ok {
-		slog.Info("client has already connected", "endpoint", "POST /api/session", "uid", c.ID.String())
+		log.Warn().
+			Str("uid", uid.String()).
+			Str("rid", c.Hub.ID.String()).
+			Msg("Client has a websocket connection already")
 		http.Error(w, "", http.StatusForbidden)
 		return
 	}
@@ -169,12 +181,17 @@ func HandleCreateRoom(w http.ResponseWriter, r *http.Request) {
 	// valid data
 	userProfile, ok := entryProfiles[sid]
 	if !ok {
-		slog.Info("user profile not found", "status", http.StatusForbidden, "sid", sid.String())
+		log.Debug().
+			Str("sid", sid.String()).
+			Msg("Failed to create room, user profile not found")
 		http.Error(w, "", http.StatusForbidden)
 		return
 	}
-	if _, ok := room.NewHubs[sid]; ok {
-		slog.Info("already created a new hub for client", "status", http.StatusTooManyRequests, "sid", sid.String())
+	if hub, ok := room.NewHubs[sid]; ok {
+		log.Debug().
+			Str("sid", sid.String()).
+			Str("rid", hub.ID.String()).
+			Msg("Created a new hub already, waiting for client")
 		http.Error(w, "", http.StatusTooManyRequests)
 		return
 	}
@@ -216,13 +233,18 @@ func UserList(w http.ResponseWriter, r *http.Request) {
 	if uid, ok := room.TokenMap[sid]; ok {
 		_client, ok := room.ClientMap[*uid]
 		if !ok {
-			slog.Info("client not found from sid", "sid", sid.String())
+			log.Debug().
+				Str("sid", sid.String()).
+				Str("uid", uid.String()).
+				Msg("Hub found from sid but client not found from the hub")
 			http.Error(w, "", http.StatusInternalServerError)
 			return
 		}
 		client = _client
 	} else {
-		slog.Info("token from client does not exists", "sid", sid.String())
+		log.Debug().
+			Str("sid", sid.String()).
+			Msg("Token from client does not exists")
 		http.Error(w, "", http.StatusForbidden)
 		return
 	}
@@ -242,7 +264,7 @@ func UserList(w http.ResponseWriter, r *http.Request) {
 
 	json, err := json.Marshal(userlist)
 	if err != nil {
-		slog.Error("user list json encode error", "err", err)
+		log.Error().Err(err).Msg("Failed to encode userlist json")
 		http.Error(w, "", http.StatusInternalServerError)
 		return
 	}
@@ -269,13 +291,18 @@ func Playlist(w http.ResponseWriter, r *http.Request) {
 	if uid, ok := room.TokenMap[sid]; ok {
 		_client, ok := room.ClientMap[*uid]
 		if !ok {
-			slog.Info("client not found from sid", "sid", sid.String())
+			log.Debug().
+				Str("sid", sid.String()).
+				Str("uid", uid.String()).
+				Msg("Hub found from sid but client not found from the hub")
 			http.Error(w, "", http.StatusInternalServerError)
 			return
 		}
 		client = _client
 	} else {
-		slog.Info("token from client does not exists", "sid", sid.String())
+		log.Debug().
+			Str("sid", sid.String()).
+			Msg("Token from client does not exists")
 		http.Error(w, "", http.StatusForbidden)
 		return
 	}
@@ -283,7 +310,7 @@ func Playlist(w http.ResponseWriter, r *http.Request) {
 	musicInfoList := client.Hub.Player.MusicInfoList()
 	jsonList, err := json.Marshal(musicInfoList)
 	if err != nil {
-		slog.Error("playlist json encode error", "err", err)
+		log.Error().Err(err).Msg("Failed to encode playlist json")
 		http.Error(w, "", http.StatusInternalServerError)
 	}
 

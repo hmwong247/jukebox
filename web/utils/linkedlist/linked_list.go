@@ -132,8 +132,7 @@ func (l *List[T]) Remove(node *Node[T]) error {
 
 func (l *List[T]) Swap(n1, n2 *Node[T]) error {
 	if n1 == nil || n2 == nil || n1.next == nil || n2.next == nil {
-		str := fmt.Sprintf("null pointer error, n1: %v, n2: %v", n1, n2)
-		return errors.New(str)
+		return fmt.Errorf("null pointer error, n1: %v, n2: %v", n1, n2)
 	}
 	if n1 == n2 {
 		return nil

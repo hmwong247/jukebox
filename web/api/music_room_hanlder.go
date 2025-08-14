@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"main/internal/room"
 	"main/internal/taskq"
 	"main/internal/ytdlp"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 func getClient(sid uuid.UUID) *room.Client {
@@ -21,14 +21,18 @@ func getClient(sid uuid.UUID) *room.Client {
 
 	uid, ok := room.TokenMap[sid]
 	if !ok {
-		slog.Error("token not found", "sid", sid.String())
+		log.Debug().
+			Str("sid", sid.String()).
+			Msg("[api] Failed to find client, token not found")
 		room.TokenMapMutex.RUnlock()
 		room.ClientMapMutex.RUnlock()
 		return nil
 	}
 	client, ok := room.ClientMap[*uid]
 	if !ok {
-		slog.Error("client not found", "uid", uid.String())
+		log.Warn().
+			Str("uid", uid.String()).
+			Msg("[api] Failed to find client, uid not found in the server, something went wrong?")
 		room.TokenMapMutex.RUnlock()
 		room.ClientMapMutex.RUnlock()
 		return nil
@@ -82,11 +86,11 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 		return
 	case http.StatusRequestTimeout:
 		w.WriteHeader(http.StatusRequestTimeout)
-		slog.Debug("[api] mq response ctx timeout")
+		log.Debug().Msg("[api] taskq response ctx timeout")
 		cancel()
 		return
 	default:
-		slog.Error("UNKNOWN MQ Response", "status", status)
+		log.Error().Int("status", status).Msg("Uknown taskq Response")
 		cancel()
 		return
 	}
@@ -99,7 +103,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		select {
 		case <-ctx.Done():
-			slog.Debug("[api] json response ctx timeout")
+			log.Debug().Msg("[api] json response ctx timeout")
 			taskStatusJson := taskq.TaskStatus{
 				Cmd:    taskq.STATUS_CMD_UPDATE,
 				TaskID: taskID,
@@ -113,7 +117,9 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 			client.Hub.DirectMsg(&msg)
 			return
 		case err := <-req.ErrCh:
-			slog.Error("[api] info json err", "req", req, "err", err)
+			log.Error().Err(err).
+				Str("reqURL", req.URL).
+				Msg("[api] InfoJson error")
 			taskStatusJson := taskq.TaskStatus{
 				Cmd:    taskq.STATUS_CMD_UPDATE,
 				TaskID: taskID,
@@ -133,7 +139,7 @@ func EnqueueURL(w http.ResponseWriter, r *http.Request) {
 				InfoJson: req.Response,
 			}
 			if err := client.Hub.Player.Playlist.Enqueue(&node); err != nil {
-				slog.Error("[api] enqueue err", "err", err)
+				log.Error().Err(err).Msg("[api] Enqueue URL error")
 				return
 			}
 
@@ -182,13 +188,16 @@ func StreamAudio(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", http.StatusBadRequest)
 		return
 	}
-	slog.Debug("[api] stream", "mp status", client.Hub.Player)
+	log.Debug().Str("MP status", client.Hub.Player.String()).Str("rid", client.Hub.B64ID()).Msg("[api] stream")
 
 	// byte serve the audio
 	client.Hub.Player.NodeWGCnt.Wait()
 	reader := client.Hub.Player.AudioReader
 	if reader == nil {
-		slog.Warn("byte reader is nil", "hub id", client.Hub.B64ID(), "client id", client.B64ID())
+		log.Warn().
+			Str("rid", client.Hub.B64ID()).
+			Str("client id", client.B64ID()).
+			Msg("MP byte reader is nil")
 		http.Error(w, "", http.StatusNotFound)
 		return
 	}
@@ -208,7 +217,7 @@ func StreamPreload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", http.StatusBadRequest)
 		return
 	}
-	slog.Debug("[api] streampreload", "mp status", client.Hub.Player)
+	log.Debug().Str("MP status", client.Hub.Player.String()).Str("rid", client.Hub.B64ID()).Msg("[api] streampreload")
 
 	// if client is host?
 	if client.Hub.Host.ID != client.ID {
@@ -230,7 +239,7 @@ func StreamEnd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "", http.StatusBadRequest)
 		return
 	}
-	slog.Debug("[api] streamend", "mp status", client.Hub.Player)
+	log.Debug().Str("MP status", client.Hub.Player.String()).Str("rid", client.Hub.B64ID()).Msg("[api] streamend")
 
 	// if client is host?
 	if client.Hub.Host.ID != client.ID {

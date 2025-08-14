@@ -3,7 +3,7 @@ package taskq
 import (
 	"context"
 	"fmt"
-	"log/slog"
+	"github.com/rs/zerolog/log"
 )
 
 type Task interface {
@@ -31,7 +31,7 @@ func (w *Worker) Start(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Debug("worker ctx cancelled", "id", w.ID)
+			log.Debug().Int("id", w.ID).Msg("worker ctx cancelled")
 			return
 		case w.poolq <- w.taskq:
 			// join the pool when available

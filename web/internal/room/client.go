@@ -2,11 +2,11 @@ package room
 
 import (
 	"encoding/json"
-	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -50,7 +50,10 @@ func (c *Client) Read() {
 	defer func() {
 		c.Hub.Unregister <- c
 		c.Conn.Close()
-		slog.Debug("ws client: defer read", "rid", c.Hub.ID.String(), "uid", c.ID.String())
+		log.Debug().
+			Str("uid", c.ID.String()).
+			Str("rid", c.Hub.B64ID()).
+			Msg("[ws] client defer write")
 	}()
 
 	c.Conn.SetReadLimit(READSIZE)
@@ -61,9 +64,9 @@ func (c *Client) Read() {
 		_, msgRead, err := c.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				slog.Error("ws client read unexpected error", "err", err)
+				log.Error().Err(err).Str("uid", c.ID.String()).Msg("[ws] Client unexpected read error")
 			}
-			slog.Error("ws client read error", "err", err)
+			log.Warn().Err(err).Str("uid", c.ID.String()).Msg("[ws] Client read error")
 			return
 		}
 		// msg = bytes.TrimSpace(bytes.Replace(msg, "\n", " ", -1))
@@ -73,7 +76,7 @@ func (c *Client) Read() {
 		err = nil
 		err = json.Unmarshal(msgRead, &rawMsg)
 		if err != nil {
-			slog.Error("[client] json error", "err", err)
+			log.Warn().Err(err).Str("uid", c.ID.String()).Msg("[ws] Client json decode error")
 			continue
 		}
 		if rawMsg.To != uuid.Nil.String() {
@@ -110,7 +113,10 @@ func (c *Client) Write() {
 	defer func() {
 		ticker.Stop()
 		c.Conn.Close()
-		slog.Debug("ws client: defer write", "rid", c.Hub.ID.String(), "uid", c.ID.String())
+		log.Debug().
+			Str("uid", c.ID.String()).
+			Str("rid", c.Hub.B64ID()).
+			Msg("[ws] client defer write")
 	}()
 
 	for {
@@ -125,19 +131,19 @@ func (c *Client) Write() {
 
 			w, err := c.Conn.NextWriter(websocket.TextMessage)
 			if err != nil {
-				slog.Error("ws client write err NextWriter", "err", err)
+				log.Error().Err(err).Str("uid", c.ID.String()).Msg("[ws] Client NextWriter error")
 				return
 			}
 			w.Write(msg)
 			if err := w.Close(); err != nil {
-				slog.Error("ws client write err w.Close", "err", err)
+				log.Warn().Err(err).Str("uid", c.ID.String()).Msg("[ws] Client writer close error")
 				return
 			}
 		case <-ticker.C:
 			// ping message
 			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				slog.Error("ws client write err ping", "err", err)
+				log.Warn().Err(err).Str("uid", c.ID.String()).Msg("[ws] Client ping error")
 				return
 			}
 		}

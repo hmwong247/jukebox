@@ -3,16 +3,17 @@ package ytdlp
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"main/internal/taskq"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 const (
-	TIMEOUT_JSON  = 10 * time.Second
-	TIMEOUT_AUDIO = 1 * time.Minute
+	TIMEOUT_JSON  = 1 * time.Minute
+	TIMEOUT_AUDIO = 3 * time.Minute
 )
 
 var (
@@ -22,12 +23,12 @@ var (
 		envar := os.Getenv("MAX_CONCURRENT_WORKER_PER_POOL")
 		var ret int
 		if envar == "" {
-			slog.Warn("Conncurrent download is not enabled")
+			log.Warn().Msg("Conncurrent download is not enabled")
 			ret = 1
 		} else {
 			_ret, err := strconv.Atoi(envar)
 			if err != nil {
-				slog.Error("Invalid env: MAX_CONCURRENT_WORKER_PER_POOL", "err", err)
+				log.Error().Err(err).Msg("Invalid env: MAX_CONCURRENT_WORKER_PER_POOL")
 				ret = 1
 			}
 			ret = _ret
@@ -39,12 +40,12 @@ var (
 		envar := os.Getenv("MAX_TASK_QUEUE_SIZE")
 		var ret int
 		if envar == "" {
-			slog.Warn("Download queue is not configured, default to 1")
+			log.Warn().Msg("Download queue is not configured, default to 1")
 			ret = 1
 		} else {
 			_ret, err := strconv.Atoi(envar)
 			if err != nil {
-				slog.Error("Invalid env: MAX_TASK_QUEUE_SIZE", "err", err)
+				log.Error().Err(err).Msg("Invalid env: MAX_TASK_QUEUE_SIZE")
 				ret = 1
 			}
 			ret = _ret
@@ -72,11 +73,11 @@ func (r *RequestInfojson) Process(workerctx context.Context) {
 	default:
 		json, err := DownloadInfoJson(r.Ctx, r.URL)
 		if err != nil {
-			slog.Info("[task] failed to fetch infojson", "err", err)
+			log.Info().Err(err).Msg("[task] failed to fetch infojson")
 			select {
 			case <-r.Ctx.Done():
 				// check closed channel, ctx already timeout on the top-level
-				slog.Debug("[task] ctx already timeout on the top-level")
+				log.Debug().Msg("[task] ctx already timeout on the top-level")
 				return
 			default:
 			}
@@ -114,11 +115,11 @@ func (r *RequestAudio) Process(workerctx context.Context) {
 	default:
 		audioBytes, err := DownloadAudio(r.Ctx, r.URL)
 		if err != nil {
-			slog.Info("[task] failed to fetch audio", "err", err)
+			log.Error().Err(err).Msg("[task] failed to fetch audio")
 			select {
 			case <-r.Ctx.Done():
 				// check closed channel, ctx already timeout on the top-level
-				slog.Debug("[task] ctx already timeout on the top-level")
+				log.Debug().Msg("[task] ctx already timeout on the top-level")
 				return
 			default:
 			}

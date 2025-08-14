@@ -12,8 +12,12 @@ services:
       <<: *env
       MAX_CONCURRENT_WORKER_PER_POOL: 2
       MAX_TASK_QUEUE_SIZE: 4
+      LOG_LEVEL: debug
     volumes:
       - shared_tmp:/tmp
+    depends_on:
+      - ytdlpy
+
   ytdlpy:
     build:
       context: ./ytdlpy
@@ -24,6 +28,18 @@ services:
       YTDLPY_MAX_CONCURRENT_DL: 4
     volumes:
       - shared_tmp:/tmp
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/certs:/etc/nginx/certs
+    depends_on:
+      - web
+      - ytdlpy
 
 volumes:
   shared_tmp:
